@@ -8,7 +8,7 @@ on:
        KERNEL_DEFCONFIG:
          description: 'Defconfig'
          required: true
-         default: 'vendor/cezanne_user_defconfig'
+         default: 'vendor/atom_user_defconfig'
        KERNEL_FILE:
          description: 'Your kernel out image name'
          required: true
@@ -20,7 +20,7 @@ on:
        USE_KERNELSU:
          description: 'Use KernelSU'
          required: true
-         default: 'true'
+         default: 'false'
          type: boolean
        KERNELSU_TAG:
          description: 'KernelSU Tag'
@@ -29,7 +29,7 @@ on:
        MAKE_BOOT_IMAGE:
          description: 'Make boot image'
          required: false
-         default: 'true'
+         default: 'false'
          type: boolean
        SOURCE_BOOT_IMAGE:
          description: 'Your original boot image url'
@@ -71,13 +71,13 @@ jobs:
         echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
         echo "DEVICE=$(echo ${{ env.KERNEL_DEFCONFIG }} | sed 's!vendor/!!;s/_defconfig//;s/_user//;s/-perf//')" >> $GITHUB_ENV
         sudo apt-get update
-        sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
+        sudo apt-get install git unzip ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
 
     - name: Download Clang-aosp and Gcc-aosp
       run: |
         mkdir clang-aosp
-        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz
-        tar -C clang-aosp/ -zxvf clang-r487747c.tar.gz
+        wget https://github.com/kdrag0n/proton-clang/archive/refs/tags/20210522.zip
+        unzip -d clang-aosp/ -v 20210522.zip
         mkdir gcc-aosp
         curl -o gcc-aosp.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
         tar -C gcc-aosp/ -zxvf gcc-aosp.tar.gz
