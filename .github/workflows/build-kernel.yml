@@ -1,13 +1,8 @@
 name: Build Kernel
 on:
   push:
-
   watch:
     types: [started]
-
-  schedule:
-    - cron: '0 18 * * 0'
-
   workflow_dispatch:
     inputs:
        KERNEL_DEFCONFIG:
@@ -44,7 +39,7 @@ on:
 jobs:
   build:
     name: Build Kernel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
