@@ -128,3 +128,6 @@ kernel/configs/android-*.cfg
 
 # Github action
 !.github
+
+#Kali nethunter
+/kali-nethunter-kernel-builder/
