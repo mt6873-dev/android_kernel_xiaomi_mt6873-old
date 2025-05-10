@@ -126,6 +126,14 @@ jobs:
            exit 1
        fi
   
+    - name: Upload Full output dir
+      uses: actions/upload-artifact@v4
+      with:
+        name: Output-${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        if-no-files-found: warn
+        include-hidden-files: true
+        path: out/arch/arm64/boot/
+    
     - name: Make Anykernel3
       if: env.CHECK_FILE_IS_OK == 'true'
       run: |
