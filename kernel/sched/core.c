@@ -17,7 +17,7 @@
 #include <linux/init_task.h>
 #include <linux/context_tracking.h>
 #include <linux/rcupdate_wait.h>
-
+#include <misc/mtk_devinfo.h>
 #include <linux/blkdev.h>
 #include <linux/kcov.h>
 #include <linux/kprobes.h>
@@ -7511,6 +7511,12 @@ int sched_cpu_dying(unsigned int cpu)
 	return 0;
 }
 #endif
+
+static int efuse_aware_big_thermal;
+void __init init_efuse_info(void)
+{
+	efuse_aware_big_thermal = (get_devinfo_with_index(7) & 0xFF) == 0x30;
+}
 
 void __init sched_init_smp(void)
 {
