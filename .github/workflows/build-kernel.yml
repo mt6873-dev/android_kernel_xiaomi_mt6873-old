@@ -34,7 +34,7 @@ on:
        SOURCE_BOOT_IMAGE:
          description: 'Your original boot image url'
          required: false
-         default: 'https://raw.githubusercontent.com/mt6873-dev/android_kernel_xiaomi_mt6873/vgroup-v2/.github/boot-bomb-a15.img'
+         default: 'https://raw.githubusercontent.com/mt6873-dev/android_kernel_xiaomi_mt6873/cgroup-v2/.github/boot-bomb-a15.img'
 
 jobs:
   build:
