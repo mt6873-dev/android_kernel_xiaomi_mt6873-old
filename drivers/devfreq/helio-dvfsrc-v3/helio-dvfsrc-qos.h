@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -101,6 +100,8 @@ struct helio_dvfsrc {
 };
 
 extern int is_dvfsrc_enabled(void);
+extern int is_dvfsrc_qos_enabled(void);
+extern void helio_dvfsrc_qos_init_done(void);
 extern void helio_dvfsrc_enable(int dvfsrc_en);
 extern void helio_dvfsrc_flag_set(int flag);
 extern int helio_dvfsrc_flag_get(void);

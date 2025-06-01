@@ -43,6 +43,13 @@
 
 struct gt9896s_module gt9896s_modules;
 
+
+/*put resume in workqueue to screen on*/
+static struct gt9896s_ts_core *resume_core_data;
+static struct work_struct touch_resume_work;
+static struct workqueue_struct *touch_resume_workqueue;
+static int touch_suspend_flag;
+
 /**
  * __do_register_ext_module - register external module
  * to register into touch core modules structure
@@ -701,7 +708,6 @@ static ssize_t gt9896s_ts_reg_rw_store(struct device *dev,
 
 	/* get addr */
 	pos = (char *)buf;
-	pos += 2;
 	token = strsep(&pos, ":");
 	if (!token) {
 		ts_err("invalid address info\n");
@@ -1144,7 +1150,7 @@ static int gt9896s_ts_power_init(struct gt9896s_ts_core *core_data)
 			core_data->avdd = NULL;
 			return r;
 		}
-		r = regulator_set_voltage(core_data->avdd, 3000000, 3000000);
+		r = regulator_set_voltage(core_data->avdd, 2800000, 2800000);
 		if (r) {
 			ts_err("regulator_set_voltage failed %d\n", r);
 			return r;
@@ -1409,13 +1415,24 @@ static void gt9896s_ts_set_input_params(struct input_dev *input_dev,
 {
 	int i;
 
-	if (ts_bdata->swap_axis)
-		swap(ts_bdata->input_max_x, ts_bdata->input_max_y);
+	if (ts_bdata->lcm_max_x && ts_bdata->lcm_max_y) {
+		if (ts_bdata->swap_axis)
+			swap(ts_bdata->lcm_max_x, ts_bdata->lcm_max_y);
 
-	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-			     0, ts_bdata->input_max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-			     0, ts_bdata->input_max_y, 0, 0);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_X,
+				     0, ts_bdata->lcm_max_x, 0, 0);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
+				     0, ts_bdata->lcm_max_y, 0, 0);
+	} else {
+		if (ts_bdata->swap_axis)
+			swap(ts_bdata->input_max_x, ts_bdata->input_max_y);
+
+		input_set_abs_params(input_dev, ABS_MT_POSITION_X,
+				     0, ts_bdata->input_max_x, 0, 0);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
+				     0, ts_bdata->input_max_y, 0, 0);
+	}
+
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, ts_bdata->panel_max_w, 0, 0);
 
@@ -1524,8 +1541,14 @@ static int gt9896s_ts_pen_dev_config(struct gt9896s_ts_core *core_data)
 	__set_bit(BTN_TOUCH, pen_dev->keybit);
 	__set_bit(BTN_TOOL_PEN, pen_dev->keybit);
 	__set_bit(INPUT_PROP_DIRECT, pen_dev->propbit);
-	input_set_abs_params(pen_dev, ABS_X, 0, ts_bdata->input_max_x, 0, 0);
-	input_set_abs_params(pen_dev, ABS_Y, 0, ts_bdata->input_max_y, 0, 0);
+
+	if (ts_bdata->lcm_max_x && ts_bdata->lcm_max_y) {
+		input_set_abs_params(pen_dev, ABS_X, 0, ts_bdata->lcm_max_x, 0, 0);
+		input_set_abs_params(pen_dev, ABS_Y, 0, ts_bdata->lcm_max_y, 0, 0);
+	} else {
+		input_set_abs_params(pen_dev, ABS_X, 0, ts_bdata->input_max_x, 0, 0);
+		input_set_abs_params(pen_dev, ABS_Y, 0, ts_bdata->input_max_y, 0, 0);
+	}
 	input_set_abs_params(pen_dev, ABS_PRESSURE, 0,
 			     GOODIX_PEN_MAX_PRESSURE, 0, 0);
 
@@ -1693,7 +1716,7 @@ int gt9896s_ts_esd_init(struct gt9896s_ts_core *core)
 	return 0;
 }
 
-static void gt9896s_ts_release_connects(struct gt9896s_ts_core *core_data)
+void gt9896s_ts_release_connects(struct gt9896s_ts_core *core_data)
 {
 	struct input_dev *input_dev = core_data->input_dev;
 	struct input_mt *mt = input_dev->mt;
@@ -1877,6 +1900,12 @@ out:
 	return 0;
 }
 
+/* resume work queue callback */
+static void resume_workqueue_callback(struct work_struct *work)
+{
+	gt9896s_ts_resume(resume_core_data);
+}
+
 #ifdef CONFIG_FB
 /**
  * gt9896s_ts_fb_notifier_callback - Framebuffer notifier callback
@@ -1888,16 +1917,28 @@ int gt9896s_ts_fb_notifier_callback(struct notifier_block *self,
 	struct gt9896s_ts_core *core_data =
 		container_of(self, struct gt9896s_ts_core, fb_notifier);
 	struct fb_event *fb_event = data;
+	int err = 0;
 
 	if (fb_event && fb_event->data && core_data) {
 		if (event == FB_EARLY_EVENT_BLANK) {
 			/* before fb blank */
 		} else if (event == FB_EVENT_BLANK) {
 			int *blank = fb_event->data;
-			if (*blank == FB_BLANK_UNBLANK)
-				gt9896s_ts_resume(core_data);
-			else if (*blank == FB_BLANK_POWERDOWN)
-				gt9896s_ts_suspend(core_data);
+			if (*blank == FB_BLANK_UNBLANK) {
+				if (touch_suspend_flag) {
+					queue_work(touch_resume_workqueue, &touch_resume_work);
+					touch_suspend_flag = 0;
+				}
+			} else if (*blank == FB_BLANK_POWERDOWN) {
+				if (!touch_suspend_flag) {
+					err = cancel_work_sync(
+						&touch_resume_work);
+					if (!err)
+						ts_err("cancel resume_workqueue failed\n");
+					gt9896s_ts_suspend(core_data);
+				}
+				touch_suspend_flag = 1;
+			}
 		}
 	}
 
@@ -2080,6 +2121,8 @@ static int gt9896s_ts_probe(struct platform_device *pdev)
 	core_data->ts_dev = ts_device;
 	platform_set_drvdata(pdev, core_data);
 
+	resume_core_data = core_data;
+
 	r = gt9896s_ts_power_init(core_data);
 	if (r < 0)
 		goto out;
@@ -2119,6 +2162,10 @@ static int gt9896s_ts_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	/* create work queue for resume */
+	touch_resume_workqueue = create_singlethread_workqueue("touch_resume");
+	INIT_WORK(&touch_resume_work, resume_workqueue_callback);
+
 	/* Try start a thread to get config-bin info */
 	r = gt9896s_start_later_init(core_data);
 	if (r) {
@@ -2152,7 +2199,7 @@ out:
 	return r;
 }
 
-static int gt9896s_ts_remove(struct platform_device *pdev)
+int gt9896s_ts_remove(struct platform_device *pdev)
 {
 	struct gt9896s_ts_core *core_data = platform_get_drvdata(pdev);
 

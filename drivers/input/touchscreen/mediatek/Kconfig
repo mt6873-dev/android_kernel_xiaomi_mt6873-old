@@ -90,8 +90,6 @@ config TOUCHSCREEN_MTK_NT36xxx
 	  module will be called.
 
 source "drivers/input/touchscreen/mediatek/NT36xxx/Kconfig"
-source "drivers/input/touchscreen/mediatek/focaltech_touch/Kconfig"
-source "drivers/input/touchscreen/mediatek/NT36xxx_HOSTDL_SPI/Kconfig"
 
 config TOUCHSCREEN_MTK_GT9XX_LM
 	bool "GT9XX_LM for Mediatek package"
@@ -139,6 +137,19 @@ config TOUCHSCREEN_MTK_GT5688
 
 source "drivers/input/touchscreen/mediatek/GT5688/Kconfig"
 source "drivers/input/touchscreen/mediatek/hxchipset/Kconfig"
+
+config TOUCHSCREEN_HIMAX_CHIPSET_8789P1_8185P3
+	bool "hxchipset for Mediatek 8789p1 and 8185p3 package"
+	default n
+	help
+	  Say Y here if you have hxchipset touch panel.
+
+	  If unsure, say N.
+
+	  To compile this dirver as a module, choose M here: the
+	  module will be called.
+
+source "drivers/input/touchscreen/mediatek/hxchipset_8789p1_8185p3/Kconfig"
 
 config TOUCHSCREEN_MTK_GT911
 	bool "GT911 for Mediatek package"

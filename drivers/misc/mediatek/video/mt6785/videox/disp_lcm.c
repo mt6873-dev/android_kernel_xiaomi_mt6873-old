@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1710,7 +1709,7 @@ int disp_lcm_is_arr_support(struct disp_lcm_handle *plcm)
 
 	dfps_levels = lcm_param->dsi.dynamic_fps_levels;
 	if (dfps_levels == 0 ||
-		dfps_levels > DFPS_LEVELNUM) {
+		dfps_levels > DYNAMIC_FPS_LEVELS) {
 		return 0;
 	}
 	p_fps_table = lcm_param->dsi.dynamic_fps_table;
@@ -1725,7 +1724,6 @@ int disp_lcm_is_arr_support(struct disp_lcm_handle *plcm)
 	DISPDBG("%s,lcm support arr\n", __func__);
 	return 1;
 }
-
 #ifdef CONFIG_MTK_HIGH_FRAME_RATE
 /*-------------------DynFPS start-----------------------------*/
 int disp_lcm_is_dynfps_support(struct disp_lcm_handle *plcm)
@@ -1887,7 +1885,7 @@ void disp_lcm_dynfps_send_cmd(
 			to_level = (dfps_params[j]).level;
 	}
 
-	lcm_drv->dynfps_send_lcm_cmd(cmdq_handle,
+	lcm_drv->dfps_send_lcm_cmd(cmdq_handle,
 		from_level, to_level, lcm_param);
 done:
 	DISPCHECK("%s,add done\n", __func__);
@@ -1896,85 +1894,100 @@ done:
 /*-------------------DynFPS end-----------------------------*/
 #endif
 
-int disp_lcm_arr_inform_lcm_way(struct disp_lcm_handle *plcm)
+/*-------------------HBM start-----------------------------*/
+int disp_lcm_get_hbm_state(struct disp_lcm_handle *plcm)
 {
-	struct LCM_PARAMS *lcm_param = NULL;
+	if (!disp_helper_get_option(DISP_OPT_LCM_HBM))
+		return -1;
 
-	/*DISPFUNC();*/
-	if (_is_lcm_inited(plcm))
-		lcm_param = plcm->params;
-
-	if (lcm_param == NULL) {
-		DISPCHECK("%s, no lcm param found", __func__);
+	if (!_is_lcm_inited(plcm)) {
+		DISP_PR_INFO("lcm_drv is null\n");
 		return -1;
 	}
 
-	return lcm_param->dsi.dfps_send_cmd_way;
+	if (!plcm->drv->get_hbm_state) {
+		DISP_PR_INFO("FATAL ERROR, lcm_drv->get_hbm_state is null\n");
+		return -1;
+	}
 
+	return plcm->drv->get_hbm_state();
 }
 
-unsigned int disp_lcm_arr_need_inform_lcm(
-	struct disp_lcm_handle *plcm, enum LCM_DFPS_FRAME_ID frame_id)
+int disp_lcm_get_hbm_wait(struct disp_lcm_handle *plcm)
 {
+	if (!disp_helper_get_option(DISP_OPT_LCM_HBM))
+		return -1;
 
-	struct LCM_PARAMS *lcm_param = NULL;
-	/*DISPFUNC();*/
-	if (_is_lcm_inited(plcm))
-		lcm_param = plcm->params;
+	if (!_is_lcm_inited(plcm)) {
+		DISP_PR_INFO("lcm_drv is null\n");
+		return -1;
+	}
+
+	if (!plcm->drv->get_hbm_wait) {
+		DISP_PR_INFO("FATAL ERROR, lcm_drv->get_hbm_wait is null\n");
+		return -1;
+	}
+
+	return plcm->drv->get_hbm_wait();
+}
+
+int disp_lcm_set_hbm_wait(bool wait, struct disp_lcm_handle *plcm)
+{
+	if (!disp_helper_get_option(DISP_OPT_LCM_HBM))
+		return -1;
+
+	if (!_is_lcm_inited(plcm)) {
+		DISP_PR_INFO("lcm_drv is null\n");
+		return -1;
+	}
+
+	if (!plcm->drv->set_hbm_wait) {
+		DISP_PR_INFO("FATAL ERROR, lcm_drv->set_hbm_wait is null\n");
+		return -1;
+	}
+
+	plcm->drv->set_hbm_wait(wait);
+	return 0;
+}
+
+int disp_lcm_set_hbm(bool en, struct disp_lcm_handle *plcm, void *qhandle)
+{
+	if (!disp_helper_get_option(DISP_OPT_LCM_HBM))
+		return -1;
+
+	if (!_is_lcm_inited(plcm)) {
+		DISP_PR_INFO("lcm_drv is null\n");
+		return -1;
+	}
+
+	if (!plcm->drv->set_hbm_cmdq) {
+		DISP_PR_INFO("FATAL ERROR, lcm_drv->set_hbm_cmdq is null\n");
+		return -1;
+	}
+
+	plcm->drv->set_hbm_cmdq(en, qhandle);
+
+	return 0;
+}
+
+unsigned int disp_lcm_get_hbm_time(bool en, struct disp_lcm_handle *plcm)
+{
+	unsigned int time = 0;
+
+	if (!disp_helper_get_option(DISP_OPT_LCM_HBM))
+		return -1;
+
+	if (!_is_lcm_inited(plcm)) {
+		DISP_PR_INFO("lcm_drv is null\n");
+		return -1;
+	}
+
+	if (en)
+		time = plcm->params->hbm_en_time;
 	else
-		return 0;
+		time = plcm->params->hbm_dis_time;
 
-	if (!((lcm_param->dsi).dfps_need_inform_lcm[frame_id]))
-		return 0;
-	DISPDBG("%s,[dfps] need infrom lcm", __func__);
-	return 1;
+	return time;
 }
-
-void disp_lcm_arr_send_cmd(
-	struct disp_lcm_handle *plcm,
-	enum LCM_DFPS_SEND_CMD_WAY dfps_send_cmd_way,
-	void *cmdq_handle, unsigned int from_fps, unsigned int to_fps,
-	enum LCM_DFPS_FRAME_ID frame_id)
-{
-
-	struct LCM_DRIVER *lcm_drv = NULL;
-	/*DISPFUNC();*/
-	if (_is_lcm_inited(plcm))
-		lcm_drv = plcm->drv;
-
-	if (!lcm_drv || !lcm_drv->dfps_send_lcm_cmd) {
-		DISPCHECK("%s, no lcm drv or no dfps func !!!\n", __func__);
-		goto done;
-	}
-	lcm_drv->dfps_send_lcm_cmd(dfps_send_cmd_way,
-		((plcm->params)->dsi).dfps_send_cmd_speed,
-		cmdq_handle, from_fps, to_fps, frame_id);
-done:
-	DISPCHECK("%s,add done\n", __func__);
-}
-
-int disp_lcm_set_param(struct disp_lcm_handle *plcm, unsigned int param)
-{
-	/*DISPFUNC(); */
-	struct LCM_DRIVER *lcm_drv = NULL;
-	int ret = 0;
-
-	DISPFUNC();
-
-	if (_is_lcm_inited(plcm)) {
-		lcm_drv = plcm->drv;
-		if (lcm_drv->set_disp_param) {
-			lcm_drv->set_disp_param(param);
-			ret = 0;
-		} else {
-			DISP_PR_ERR("FATAL ERROR, lcm_drv->set_backlight is null\n");
-			ret = -1;
-		}
-	} else {
-		DISP_PR_ERR("lcm_drv is null\n");
-		ret = -1;
-	}
-
-	return ret;
-}
+/*-------------------HBM End-----------------------------*/
 

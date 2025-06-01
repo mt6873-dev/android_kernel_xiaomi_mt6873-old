@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -17,6 +16,7 @@
 #include <linux/notifier.h>
 
 int nanohub_ipi_init(void);
+void scp_wdt_reset(enum scp_core_id cpu_id);
 
 #endif
 

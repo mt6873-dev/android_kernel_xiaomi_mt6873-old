@@ -244,9 +244,9 @@ void mtk_jpeg_unprepare_dvfs(void)
 
 void mtk_jpeg_start_dvfs(void)
 {
-	if (g_freq_steps[1] != 0) {
-		pr_info("highest freq 0x%x", g_freq_steps[1]);
-		pm_qos_update_request(&jpeg_qos_request,  g_freq_steps[1]);
+	if (g_freq_steps[0] != 0) {
+		pr_info("highest freq 0x%x", g_freq_steps[0]);
+		pm_qos_update_request(&jpeg_qos_request,  g_freq_steps[0]);
 	}
 }
 
@@ -285,7 +285,6 @@ void mtk_jpeg_update_bw_request(struct mtk_jpeg_ctx *ctx,
 	unsigned int emi_bw = 0;
 	unsigned int picSize = 0;
 	unsigned int limitedFPS = 0;
-	unsigned int core_id = ctx->coreid;
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 
 	/* Support QoS */
@@ -341,7 +340,6 @@ void mtk_jpeg_update_bw_request(struct mtk_jpeg_ctx *ctx,
 
 void mtk_jpeg_end_bw_request(struct mtk_jpeg_ctx *ctx)
 {
-	unsigned int core_id = ctx->coreid;
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 
 	mm_qos_set_request(&jpeg->jpeg_y_rdma, 0, 0, BW_COMP_NONE);
@@ -1037,13 +1035,6 @@ static int mtk_jpeg_queue_setup(struct vb2_queue *q,
 	if (!q_data)
 		return -EINVAL;
 
-	if (*num_planes) {
-		for (i = 0; i < *num_planes; i++)
-			if (sizes[i] < q_data->sizeimage[i])
-				return -EINVAL;
-		return 0;
-	}
-
 	*num_planes = q_data->fmt->colplanes;
 	for (i = 0; i < q_data->fmt->colplanes; i++) {
 		sizes[i] = q_data->sizeimage[i];
@@ -1472,8 +1463,12 @@ static void mtk_jpeg_device_run(void *priv)
 device_run_end:
 	v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
 	v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
-	v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf), buf_state);
-	v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf), buf_state);
+	if (src_buf != NULL)
+		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf), buf_state);
+
+	if (dst_buf != NULL)
+		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf), buf_state);
+
 	v4l2_m2m_job_finish(jpeg->m2m_dev, ctx->fh.m2m_ctx);
 }
 
@@ -1618,9 +1613,8 @@ static void mtk_jpeg_clk_on_ctx(struct mtk_jpeg_ctx *ctx)
 
 static void mtk_jpeg_clk_off_ctx(struct mtk_jpeg_ctx *ctx)
 {
-	pr_info("%s  +", __func__);
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
-
+	pr_info("%s  +", __func__);
 	disable_irq(jpeg->irq[ctx->coreid]);
 
 	if (jpeg->mode == MTK_JPEG_ENC)
@@ -1721,8 +1715,10 @@ static irqreturn_t mtk_jpeg_irq(int irq, void *priv)
 	buf_state = VB2_BUF_STATE_DONE;
 
 irq_end:
-	v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf), buf_state);
-	v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf), buf_state);
+	if (src_buf != NULL)
+		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf), buf_state);
+	if (dst_buf != NULL)
+		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf), buf_state);
 	v4l2_m2m_job_finish(jpeg->m2m_dev, ctx->fh.m2m_ctx);
 	return IRQ_HANDLED;
 }
@@ -2055,11 +2051,6 @@ static int mtk_jpeg_probe(struct platform_device *pdev)
 	if (ret)
 		pr_info("BSDMA read failed:%d\n", ret);
 
-
-	mtk_jpeg_prepare_bw_request(jpeg);
-
-	mtk_jpeg_prepare_dvfs();
-
 	ret = mtk_jpeg_clk_init(jpeg);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to init clk, err %d\n", ret);
@@ -2107,6 +2098,10 @@ static int mtk_jpeg_probe(struct platform_device *pdev)
 		v4l2_err(&jpeg->v4l2_dev, "Failed to register video device\n");
 		goto err_vfd_jpeg_register;
 	}
+
+	mtk_jpeg_prepare_bw_request(jpeg);
+
+	mtk_jpeg_prepare_dvfs();
 
 	video_set_drvdata(jpeg->vfd_jpeg, jpeg);
 	v4l2_info(&jpeg->v4l2_dev,

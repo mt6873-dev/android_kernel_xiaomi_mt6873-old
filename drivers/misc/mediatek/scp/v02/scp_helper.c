@@ -79,6 +79,7 @@ unsigned int scp_enable[SCP_CORE_TOTAL];
 /* scp dvfs variable*/
 unsigned int scp_expected_freq;
 unsigned int scp_current_freq;
+unsigned int scp_dvfs_cali_ready;
 
 /*scp awake variable*/
 int scp_awake_counts[SCP_CORE_TOTAL];
@@ -393,6 +394,7 @@ static void scp_A_notify_ws(struct work_struct *ws)
 		scp_pll_ctrl_set(PLL_DISABLE, CLK_26M);
 #endif
 
+		scp_dvfs_cali_ready = 1;
 		pr_debug("[SCP] notify blocking call\n");
 		blocking_notifier_call_chain(&scp_A_notifier_list
 			, SCP_EVENT_READY, NULL);
@@ -889,37 +891,6 @@ DEVICE_ATTR(recovery_flag, 0600, scp_recovery_flag_r, scp_recovery_flag_w);
 
 #endif
 
-
-/******************************************************************************
- *****************************************************************************/
-static ssize_t scp_set_log_filter(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	int ret;
-	uint32_t filter;
-
-	if (sscanf(buf, "0x%08x", &filter) != 1)
-		return -EINVAL;
-
-	ret = mtk_ipi_send(&scp_ipidev, IPI_OUT_SCP_LOG_FILTER_1, 0, &filter,
-			   PIN_OUT_SIZE_SCP_LOG_FILTER_1, 0);
-	switch (ret) {
-	case IPI_ACTION_DONE:
-		pr_notice("[SCP] Set log filter to 0x%08x\n", filter);
-		return count;
-
-	case IPI_PIN_BUSY:
-		pr_notice("[SCP] IPI busy. Set log filter failed!\n");
-		return -EBUSY;
-
-	default:
-		pr_notice("[SCP] IPI error. Set log filter failed!\n");
-		return -EIO;
-	}
-}
-DEVICE_ATTR(log_filter, 0200, NULL, scp_set_log_filter);
-
-
 /******************************************************************************
  *****************************************************************************/
 static struct miscdevice scp_device = {
@@ -1180,6 +1151,12 @@ void scp_register_feature(enum feature_id id)
 			scp_ready[SCP_A_ID]);
 		return;
 	}
+	/* prevent from access when scp dvfs cali isn't done */
+	if (!scp_dvfs_cali_ready) {
+		pr_debug("[SCP] %s: dvfs cali not ready, scp_dvfs_cali=%u\n",
+		__func__, scp_dvfs_cali_ready);
+		return;
+	}
 
 	/* because feature_table is a global variable,
 	 * use mutex lock to protect it from accessing in the same time
@@ -1226,6 +1203,12 @@ void scp_deregister_feature(enum feature_id id)
 	if (!scp_ready[SCP_A_ID]) {
 		pr_debug("[SCP] %s:not ready, scp=%u\n", __func__,
 			scp_ready[SCP_A_ID]);
+		return;
+	}
+	/* prevent from access when scp dvfs cali isn't done */
+	if (!scp_dvfs_cali_ready) {
+		pr_debug("[SCP] %s: dvfs cali not ready, scp_dvfs_cali=%u\n",
+		__func__, scp_dvfs_cali_ready);
 		return;
 	}
 
@@ -1418,8 +1401,11 @@ void scp_reset_wait_timeout(void)
 		mdelay(20);
 	}
 
-	if (timeout == 0)
+	if (timeout < 0) {
 		pr_notice("[SCP] reset timeout, still reset scp\n");
+		pr_notice("[SCP] core0_status = %x, core1_status = %x\n",
+		readl(R_CORE0_STATUS), readl(R_CORE1_STATUS));
+	}
 
 }
 
@@ -1446,6 +1432,7 @@ void scp_sys_reset_ws(struct work_struct *ws)
 	 *   SCP_PLATFORM_READY = 1,
 	 */
 	scp_ready[SCP_A_ID] = 0;
+	scp_dvfs_cali_ready = 0;
 
 	/* wake lock AP*/
 	__pm_stay_awake(&scp_reset_lock);
@@ -1854,6 +1841,7 @@ static int __init scp_init(void)
 		scp_enable[i] = 0;
 		scp_ready[i] = 0;
 	}
+	scp_dvfs_cali_ready = 0;
 
 #if SCP_DVFS_INIT_ENABLE
 	scp_dvfs_init();

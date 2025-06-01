@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -415,6 +414,7 @@ void wk_cpu_update_bit_flag(int cpu, int plug_status)
 		spin_lock(&lock);
 		cpus_kick_bit |= (1 << cpu);
 		kick_bit = 0;
+		g_hang_detected = 0;
 		lasthpg_cpu = cpu;
 		lasthpg_act = plug_status;
 		lasthpg_t = sched_clock();
@@ -424,6 +424,7 @@ void wk_cpu_update_bit_flag(int cpu, int plug_status)
 		spin_lock(&lock);
 		cpus_kick_bit &= (~(1 << cpu));
 		kick_bit = 0;
+		g_hang_detected = 0;
 		lasthpg_cpu = cpu;
 		lasthpg_act = plug_status;
 		lasthpg_t = sched_clock();
@@ -512,7 +513,8 @@ static void kwdt_print_utc(char *msg_buf, int msg_buf_size)
 static void kwdt_process_kick(int local_bit, int cpu,
 				unsigned long curInterval, char msg_buf[])
 {
-	unsigned int dump_timeout = 0;
+	unsigned int dump_timeout = 0, tmp = 0;
+	void __iomem *apxgpt_base = 0;
 
 	local_bit = kick_bit;
 	if ((local_bit & (1 << cpu)) == 0) {
@@ -539,9 +541,25 @@ static void kwdt_process_kick(int local_bit, int cpu,
 		msg_buf[5] = 'k';
 		mtk_wdt_restart(WD_TYPE_NORMAL);/* for KICK external wdt */
 		local_bit = 0;
+		g_hang_detected = 0;
 	}
 
 	kick_bit = local_bit;
+
+	apxgpt_base = mtk_wdt_apxgpt_base();
+	if (apxgpt_base) {
+		u32 kick_dbg_off = 0;
+		/* "DB" signature */
+		tmp = 0x4442 << 16;
+		tmp |= (local_bit & 0xFF) << 8;
+		tmp |= wk_check_kick_bit() & 0xFF;
+		kick_dbg_off = mtk_wdt_kick_dbg_off();
+		if (kick_dbg_off)
+			__raw_writel(tmp, apxgpt_base + kick_dbg_off);
+		else
+			__raw_writel(tmp, apxgpt_base + 0x7c);
+	}
+
 	spin_unlock(&lock);
 
 	/*

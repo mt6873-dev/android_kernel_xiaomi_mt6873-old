@@ -456,7 +456,7 @@ config ARM64_ERRATUM_1024718
 	help
 	  This option adds work around for Arm Cortex-A55 Erratum 1024718.
 
-	  Affected Cortex-A55 cores (all revisions) could cause incorrect
+	  Affected Cortex-A55 cores (r0p0, r0p1, r1p0) could cause incorrect
 	  update of the hardware dirty bit when the DBM/AP bits are updated
 	  without a break-before-make. The work around is to disable the usage
 	  of hardware DBM locally on the affected cores. CPUs not affected by
@@ -473,36 +473,6 @@ config ARM64_ERRATUM_1542418
 	  Affected Cortex-A77 cores (r0p0, r1p0) could cause the core might
 	  fetch a stale instructions from the L0 Macro-op cache which violates
 	  the ordefing of instruction fetches.
-
-config ARM64_ERRATUM_1188873
-	bool "Cortex-A76: MRC read following MRRC read of specific Generic Timer in AArch32 might give incorrect result"
-	default y
-	depends on COMPAT
-	select ARM_ARCH_TIMER_OOL_WORKAROUND
-	help
-	  This option adds work arounds for ARM Cortex-A76 erratum 1188873
-
-	  Affected Cortex-A76 cores (r0p0, r1p0, r2p0) could cause
-	  register corruption when accessing the timer registers from
-	  AArch32 userspace.
-
-	  If unsure, say Y.
-
-config ARM64_ERRATUM_1742098
-	bool "Cortex-A57/A72: 1742098: ELR recorded incorrectly on interrupt taken between cryptographic instructions in a sequence"
-	depends on COMPAT
-	default y
-	help
-	  This option removes the AES hwcap for aarch32 user-space to
-	  workaround erratum 1742098 on Cortex-A57 and Cortex-A72.
-
-	  Affected parts may corrupt the AES state if an interrupt is
-	  taken between a pair of AES instructions. These instructions
-	  are only present if the cryptography extensions are present.
-	  All software should have a fallback implementation for CPUs
-	  that don't implement the cryptography extensions.
-
-	  If unsure, say Y.
 
 config CAVIUM_ERRATUM_22375
 	bool "Cavium erratum 22375, 24313"
@@ -767,9 +737,6 @@ config HW_PERF_EVENTS
 	def_bool y
 	depends on ARM_PMU
 
-config BOOT_INFO
-	def_bool y
-
 config SYS_SUPPORTS_HUGETLBFS
 	def_bool y
 
@@ -906,16 +873,6 @@ config ARM64_SSBD
 	  by speculative loads.
 
 	  If unsure, say Y.
-
-config MITIGATE_SPECTRE_BRANCH_HISTORY
-	bool "Mitigate Spectre style attacks against branch history" if EXPERT
-	default y
-	depends on HARDEN_BRANCH_PREDICTOR || !KVM
-	help
-	  Speculation attacks against some high-performance processors can
-	  make use of branch history to influence future speculation.
-	  When taking an exception from user-space, a sequence of branches
-	  or a firmware call overwrites the branch history.
 
 config ARM64_TAGGED_ADDR_ABI
 	bool "Enable the tagged user addresses syscall ABI"
@@ -1238,15 +1195,6 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE
 	  DTBs to be built by default (instead of a standalone Image.gz.)
 	  The image will built in arch/arm64/boot/Image.gz-dtb
 
-config BUILD_ARM64_DTB_OVERLAY_IMAGE
-	bool "Build a device tree overlay image"
-	depends on OF
-	help
-	  Enabling this option will casue overlay device tree
-	  to be built by default.
-	  Overlay DT contains device-specific configurations.
-	  Please be aware that bootloader supports DT merging.
-
 choice
 	prompt "Appended DTB Kernel Image name"
 	depends on BUILD_ARM64_APPENDED_DTB_IMAGE
@@ -1274,13 +1222,6 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
 	  Space separated list of names of dtbs to append when
 	  building a concatenated Image.gz-dtb.
 
-config BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES
-	string "Default dtb overlay names"
-	depends on BUILD_ARM64_DTB_OVERLAY_IMAGE
-	help
-	  Space separated list of names of dtbs to append when
-	  building a concatenated overlay image
-
 endmenu
 
 menu "Userspace binary formats"
@@ -1306,64 +1247,9 @@ config COMPAT
 
 	  If you want to execute 32-bit userspace applications, say Y.
 
-config KUSER_HELPERS
-	bool "Enable the kuser helpers page in 32-bit processes"
-	depends on COMPAT
-	default y
-	help
-	  Warning: disabling this option may break 32-bit applications.
-
-	  Provide kuser helpers in a special purpose fixed-address page. The
-	  kernel provides helper code to userspace in read-only form at a fixed
-	  location to allow userspace to be independent of the CPU type fitted
-	  to the system. This permits 32-bit binaries to be run on ARMv6 through
-	  to ARMv8 without modification.
-
-	  See Documentation/arm/kernel_user_helpers.txt for details.
-
-	  However, the fixed-address nature of these helpers can be used by ROP
-	  (return-orientated programming) authors when creating exploits.
-
-	  If all of the 32-bit binaries and libraries that run on your platform
-	  are built specifically for your platform, and make no use of these
-	  helpers, then you can turn this option off to hinder such exploits.
-	  However, in that case, if a binary or library relying on those helpers
-	  is run, it will receive a SIGSEGV signal, which will terminate the
-	  program. Typically, binaries compiled for ARMv7 or later do not use
-	  the kuser helpers.
-
-	  Say N here only if you are absolutely certain that you do not need
-	  these helpers; otherwise, the safe option is to say Y (the default
-	  for now)
-
 config SYSVIPC_COMPAT
 	def_bool y
 	depends on COMPAT && SYSVIPC
-
-config COMPAT_VDSO
-	bool "32-bit vDSO"
-	depends on COMPAT
-	select ARM_ARCH_TIMER_VCT_ACCESS
-	default n
-	help
-	  Warning: a 32-bit toolchain is necessary to build the vDSO. You
-	  must explicitly define which toolchain should be used by setting
-	  CROSS_COMPILE_ARM32 to the prefix of the 32-bit toolchain (same format
-	  as CROSS_COMPILE). If CROSS_COMPILE_ARM32 is empty, a warning will be
-	  printed and the kernel will be built as if COMPAT_VDSO had not been
-	  set. If CROSS_COMPILE_ARM32 is set to an invalid prefix, compilation
-	  will be aborted.
-
-	  Provide a vDSO to 32-bit processes. It includes the symbols provided
-	  by the vDSO from the 32-bit kernel, so that a 32-bit libc can use
-	  the compat vDSO without modification. It also provides sigreturn
-	  trampolines, replacing the sigreturn page.
-
-config CROSS_COMPILE_ARM32
-	string "32-bit toolchain prefix"
-	help
-	  Same as setting CROSS_COMPILE_ARM32 in the environment, but saved for
-	  future builds. The environment variable overrides this config option.
 
 endmenu
 
@@ -1414,10 +1300,3 @@ source "arch/arm64/crypto/Kconfig"
 endif
 
 source "lib/Kconfig"
-
-config HWCONF_MANAGER
-	bool "Hardware configuration and monitor information"
-	default y
-	help
-	It provides all kinds of components configuration information and
-	monitor values.

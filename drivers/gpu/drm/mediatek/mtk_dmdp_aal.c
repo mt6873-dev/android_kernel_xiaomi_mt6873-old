@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -88,10 +87,10 @@ static void mtk_dmdp_aal_stop(struct mtk_ddp_comp *comp,
 		       0x0, ~0);
 }
 
-static void mtk_dmdp_aal_bypass(struct mtk_ddp_comp *comp,
+static void mtk_dmdp_aal_bypass(struct mtk_ddp_comp *comp, int bypass,
 	struct cmdq_pkt *handle)
 {
-	DDPINFO("%s\n", __func__);
+	DDPINFO("%s : bypass = %d\n", __func__, bypass);
 
 	cmdq_pkt_write(handle, comp->cmdq_base, comp->regs_pa + DMDP_AAL_EN,
 		       AAL_EN, ~0);
@@ -227,7 +226,7 @@ static void ddp_aal_dre3_backup(struct mtk_ddp_comp *comp)
 					readl(comp->regs + DMDP_AAL_TILE_00);
 	} else
 		g_aal_backup.TILE_00 =
-			readl(comp->regs + DMDP_AAL_TILE_00);	
+			readl(comp->regs + DMDP_AAL_TILE_00);
 }
 
 static void ddp_aal_dre_backup(struct mtk_ddp_comp *comp)

@@ -77,7 +77,7 @@ static int mdw_release(struct inode *inode, struct file *filp)
 	struct mdw_usr *u;
 
 	u = filp->private_data;
-	mdw_usr_destroy(u);
+	mdw_usr_put(u);
 
 	return 0;
 }
@@ -140,6 +140,7 @@ static int mdw_probe(struct platform_device *pdev)
 	}
 
 	mdw_dbg_init();
+	apusys_dump_init(mdw_device);
 	mdw_sysfs_init(mdw_device);
 	mdw_tag_init();
 	mdw_mem_init();
@@ -177,6 +178,7 @@ static int mdw_remove(struct platform_device *pdev)
 	mdw_mem_exit();
 	mdw_tag_exit();
 	mdw_sysfs_exit();
+	apusys_dump_exit(&pdev->dev);
 	mdw_dbg_exit();
 
 	/* Release device */
@@ -199,8 +201,7 @@ static int mdw_remove(struct platform_device *pdev)
 
 static int mdw_suspend(struct platform_device *pdev, pm_message_t mesg)
 {
-	mdw_sched_pause();
-	return 0;
+	return mdw_sched_pause();
 }
 
 static int mdw_resume(struct platform_device *pdev)

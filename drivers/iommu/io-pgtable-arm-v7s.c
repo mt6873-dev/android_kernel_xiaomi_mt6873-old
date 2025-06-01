@@ -27,7 +27,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Copyright (C) 2014-2015 ARM Limited
- * Copyright (C) 2021 XiaoMi, Inc.
  * Copyright (c) 2014-2015 MediaTek Inc.
  */
 
@@ -562,7 +561,7 @@ static int __arm_v7s_map(struct arm_v7s_io_pgtable *data, unsigned long iova,
 	struct io_pgtable_cfg *cfg = &data->iop.cfg;
 	arm_v7s_iopte pte, *cptep;
 	int num_entries = size >> ARM_V7S_LVL_SHIFT(lvl);
-#ifdef CONFIG_MTK_PSEUDO_M4U
+#ifdef CONFIG_MTK_IOMMU_V2
 	phys_addr_t pte_phys;
 #endif
 
@@ -1208,9 +1207,9 @@ static struct io_pgtable *arm_v7s_alloc_pgtable(struct io_pgtable_cfg *cfg,
 #endif
 #ifdef MTK_PGTABLE_DEBUG_ENABLED
 	phys_addr = virt_to_phys(data->pgd);
-	pr_notice("%s, %d, pgd=0x%lx, cf.ttbr=0x%x,pgd_pa=0x%lx, quirks=0x%lx\n",
+	pr_notice("%s, %d, pgd=0x%lx, cf.ttbr=0x%x,pgd_pa=0x%lx\n",
 		  __func__, __LINE__, (unsigned long)data->pgd,
-		cfg->arm_v7s_cfg.ttbr[0], phys_addr, cfg->quirks);
+		cfg->arm_v7s_cfg.ttbr[0], phys_addr);
 #endif
 	return &data->iop;
 

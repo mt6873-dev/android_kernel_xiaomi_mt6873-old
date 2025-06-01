@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -28,6 +27,7 @@
 #include "mtk_disp_color.h"
 #include "mtk_log.h"
 #include "mtk_dump.h"
+#include "mtk_drm_helper.h"
 
 #define DISP_REG_CCORR_EN (0x000)
 #define DISP_REG_CCORR_INTEN                     (0x008)
@@ -95,7 +95,7 @@ static bool need_offset;
 /* static ddp_module_notify g_ccorr_ddp_notify; */
 
 // It's a work around for no comp assigned in functions.
-struct mtk_ddp_comp *default_comp;
+static struct mtk_ddp_comp *default_comp;
 
 static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	struct cmdq_pkt *handle, int lock);
@@ -104,6 +104,7 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 enum CCORR_IOCTL_CMD {
 	SET_CCORR = 0,
 	SET_INTERRUPT,
+	BYPASS_CCORR
 };
 
 struct mtk_disp_ccorr_data {
@@ -201,6 +202,18 @@ static void disp_ccorr_multiply_3x3(unsigned int ccorrCoef[3][3],
 	}
 }
 
+static int disp_ccorr_color_matrix_to_dispsys(struct drm_device *dev)
+{
+	int ret = 0;
+	struct mtk_drm_private *private = dev->dev_private;
+
+	// All Support 3*4 matrix on drm architecture
+	ret = mtk_drm_helper_set_opt_by_name(private->helper_opt,
+		"MTK_DRM_OPT_PQ_34_COLOR_MATRIX", 1);
+
+	return ret;
+}
+
 static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	struct cmdq_pkt *handle, int lock)
 {
@@ -236,7 +249,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	// For 6885 need to left shift one bit
 	for (i = 0; i < 3; i++)
 		for (j = 0; j < 3; j++)
@@ -517,18 +531,6 @@ void disp_pq_notify_backlight_changed(int bl_1024)
 	}
 }
 
-static struct DRM_DISP_CCORR_COEF_T ccorr_backup = {
-	.hw_id = DRM_DISP_CCORR0,
-	.coef = {{1024, 0, 0}, {0, 1024, 0}, {0, 0, 1024}},
-	.offset = {0, 0, 0},
-};
-
-static struct DRM_DISP_CCORR_COEF_T ccorr_identify = {
-	.hw_id = DRM_DISP_CCORR0,
-	.coef = {{1024, 0, 0}, {0, 1024, 0}, {0, 0, 1024}},
-	.offset = {0, 0, 0},
-};
-
 static int disp_ccorr_set_coef(
 	const struct DRM_DISP_CCORR_COEF_T *user_color_corr,
 	struct mtk_ddp_comp *comp,
@@ -537,8 +539,6 @@ static int disp_ccorr_set_coef(
 	int ret = 0;
 	struct DRM_DISP_CCORR_COEF_T *ccorr, *old_ccorr;
 	int id = index_of_ccorr(comp->id);
-	bool hbm_set = false;
-	static bool hbm_en = false;
 
 	ccorr = kmalloc(sizeof(struct DRM_DISP_CCORR_COEF_T), GFP_KERNEL);
 	if (ccorr == NULL) {
@@ -546,39 +546,12 @@ static int disp_ccorr_set_coef(
 		return -EFAULT;
 	}
 
-	if (user_color_corr != NULL) {
-			if (!strncmp((char*)user_color_corr, "panel_HBM=1", sizeof("panel_HBM=1"))) {
-				pr_info("PCC disp_ccorr_set_coef panel_HBM=1");
-				memcpy(ccorr, &ccorr_identify,
-					sizeof(struct DRM_DISP_CCORR_COEF_T));
-				hbm_set = true;
-				hbm_en = true;
-			} else if (!strncmp((char*)user_color_corr, "panel_HBM=0", sizeof("panel_HBM=0"))) {
-				pr_info("PCC disp_ccorr_set_coef panel_HBM=0");
-				memcpy(ccorr, &ccorr_backup,
-					sizeof(struct DRM_DISP_CCORR_COEF_T));
-				hbm_set = true;
-				hbm_en = false;
-			}
-		}
-
 	if (user_color_corr == NULL) {
 		ret = -EFAULT;
 		kfree(ccorr);
 	} else {
-		if (!hbm_set) {
-			memcpy(ccorr, user_color_corr,
-				sizeof(struct DRM_DISP_CCORR_COEF_T));
-
-			memcpy(&ccorr_backup, ccorr,
-				sizeof(struct DRM_DISP_CCORR_COEF_T));
-
-			if (hbm_en) {
-				pr_info("PCC disp_ccorr_set_coef ccorr_identify");
-				memcpy(ccorr, &ccorr_identify,
-					sizeof(struct DRM_DISP_CCORR_COEF_T));
-			}
-		}
+		memcpy(ccorr, user_color_corr,
+			sizeof(struct DRM_DISP_CCORR_COEF_T));
 
 		if (id >= 0 && id < DISP_CCORR_TOTAL) {
 			mutex_lock(&g_ccorr_global_lock);
@@ -655,7 +628,6 @@ static int mtk_disp_ccorr_set_interrupt(struct mtk_ddp_comp *comp, void *data)
 		__func__, __LINE__);
 	return ret;
 }
-
 int disp_ccorr_set_color_matrix(struct mtk_ddp_comp *comp,
 	struct cmdq_pkt *handle, int32_t matrix[16], int32_t hint, bool fte_flag)
 {
@@ -667,7 +639,7 @@ int disp_ccorr_set_color_matrix(struct mtk_ddp_comp *comp,
 	int id = index_of_ccorr(comp->id);
 	struct mtk_drm_crtc *mtk_crtc = comp->mtk_crtc;
 	struct drm_crtc *crtc = &mtk_crtc->base;
-	struct mtk_drm_private *priv = crtc->dev->dev_private;	
+	struct mtk_drm_private *priv = crtc->dev->dev_private;
 
 	if (handle == NULL) {
 		DDPPR_ERR("%s: cmdq can not be NULL\n", __func__);
@@ -746,7 +718,8 @@ int disp_ccorr_set_color_matrix(struct mtk_ddp_comp *comp,
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	// offset part
 	if ((matrix[12] != 0) || (matrix[13] != 0) || (matrix[14] != 0))
 		need_offset = true;
@@ -886,9 +859,10 @@ int mtk_drm_ioctl_support_color_matrix(struct drm_device *dev, void *data,
 
 	color_transform = data;
 
-#if defined(CONFIG_MACH_MT6885) \
+#if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	 || defined(CONFIG_MACH_MT6781)
 	// Support matrix:
 	// AOSP is 4x3 matrix. Offset is located at 4th row (not zero)
 
@@ -929,11 +903,11 @@ static void mtk_ccorr_config(struct mtk_ddp_comp *comp,
 			     struct cmdq_pkt *handle)
 {
 	unsigned int width;
-	
-		if (comp->mtk_crtc->is_dual_pipe)
-			width = cfg->w / 2;
-		else
-			width = cfg->w;
+
+	if (comp->mtk_crtc->is_dual_pipe)
+		width = cfg->w / 2;
+	else
+		width = cfg->w;
 
 	DDPINFO("%s\n", __func__);
 
@@ -951,13 +925,13 @@ static void mtk_ccorr_start(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		       comp->regs_pa + DISP_REG_CCORR_EN, 0x1, 0x1);
 }
 
-static void mtk_ccorr_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_ccorr_bypass(struct mtk_ddp_comp *comp, int bypass,
+	struct cmdq_pkt *handle)
 {
 	DDPINFO("%s\n", __func__);
-
 	cmdq_pkt_write(handle, comp->cmdq_base,
-		       comp->regs_pa + DISP_REG_CCORR_CFG, 0x1, 0x1);
-	g_ccorr_relay_value[index_of_ccorr(comp->id)] = 0x1;
+		       comp->regs_pa + DISP_REG_CCORR_CFG, bypass, 0x1);
+	g_ccorr_relay_value[index_of_ccorr(comp->id)] = bypass;
 }
 
 static int mtk_ccorr_user_cmd(struct mtk_ddp_comp *comp,
@@ -1002,11 +976,35 @@ static int mtk_ccorr_user_cmd(struct mtk_ddp_comp *comp,
 	}
 	break;
 
+	case BYPASS_CCORR:
+	{
+		int *value = data;
+
+		mtk_ccorr_bypass(comp, *value, handle);
+	}
+	break;
+
 	default:
 		DDPPR_ERR("%s: error cmd: %d\n", __func__, cmd);
 		return -EINVAL;
 	}
 	return 0;
+}
+
+struct ccorr_backup {
+	unsigned int REG_CCORR_CFG;
+};
+static struct ccorr_backup g_ccorr_backup;
+
+static void ddp_ccorr_backup(struct mtk_ddp_comp *comp)
+{
+	g_ccorr_backup.REG_CCORR_CFG =
+		readl(comp->regs + DISP_REG_CCORR_CFG);
+}
+
+static void ddp_ccorr_restore(struct mtk_ddp_comp *comp)
+{
+	writel(g_ccorr_backup.REG_CCORR_CFG, comp->regs + DISP_REG_CCORR_CFG);
 }
 
 static void mtk_ccorr_prepare(struct mtk_ddp_comp *comp)
@@ -1032,12 +1030,14 @@ static void mtk_ccorr_prepare(struct mtk_ddp_comp *comp)
 	}
 #else
 #if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	/* Bypass shadow register and read shadow register */
 	mtk_ddp_write_mask_cpu(comp, CCORR_BYPASS_SHADOW,
 		DISP_REG_CCORR_SHADOW, CCORR_BYPASS_SHADOW);
 #endif
 #endif
+	ddp_ccorr_restore(comp);
 }
 
 static void mtk_ccorr_unprepare(struct mtk_ddp_comp *comp)
@@ -1053,7 +1053,7 @@ static void mtk_ccorr_unprepare(struct mtk_ddp_comp *comp)
 	spin_unlock_irqrestore(&g_ccorr_clock_lock, flags);
 	DDPDBG("%s @ %d......... spin_unlock_irqrestore ", __func__, __LINE__);
 	wake_up_interruptible(&g_ccorr_get_irq_wq); // wake up who's waiting isr
-
+	ddp_ccorr_backup(comp);
 	mtk_ddp_comp_clk_unprepare(comp);
 
 	DDPINFO("%s\n", __func__);
@@ -1085,6 +1085,7 @@ static int mtk_disp_ccorr_bind(struct device *dev, struct device *master,
 		return ret;
 	}
 
+	disp_ccorr_color_matrix_to_dispsys(drm_dev);
 	return 0;
 }
 
@@ -1135,6 +1136,9 @@ static int mtk_disp_ccorr_probe(struct platform_device *pdev)
 		return comp_id;
 	}
 
+	if (!default_comp && comp_id == DDP_COMPONENT_CCORR0)
+		default_comp = &priv->ddp_comp;
+
 	ret = mtk_ddp_comp_init(dev, dev->of_node, &priv->ddp_comp, comp_id,
 				&mtk_disp_ccorr_funcs);
 	if (ret != 0) {
@@ -1156,8 +1160,6 @@ static int mtk_disp_ccorr_probe(struct platform_device *pdev)
 		pm_runtime_disable(dev);
 	}
 	DDPINFO("%s-\n", __func__);
-
-	default_comp = NULL;
 
 	return ret;
 }
@@ -1186,7 +1188,15 @@ static const struct mtk_disp_ccorr_data mt6853_ccorr_driver_data = {
 	.support_shadow = false,
 };
 
+static const struct mtk_disp_ccorr_data mt6877_ccorr_driver_data = {
+	.support_shadow = false,
+};
+
 static const struct mtk_disp_ccorr_data mt6833_ccorr_driver_data = {
+	.support_shadow = false,
+};
+
+static const struct mtk_disp_ccorr_data mt6781_ccorr_driver_data = {
 	.support_shadow = false,
 };
 
@@ -1199,8 +1209,12 @@ static const struct of_device_id mtk_disp_ccorr_driver_dt_match[] = {
 	  .data = &mt6873_ccorr_driver_data},
 	{ .compatible = "mediatek,mt6853-disp-ccorr",
 	  .data = &mt6853_ccorr_driver_data},
+	{ .compatible = "mediatek,mt6877-disp-ccorr",
+	  .data = &mt6877_ccorr_driver_data},
 	{ .compatible = "mediatek,mt6833-disp-ccorr",
 	  .data = &mt6833_ccorr_driver_data},
+	{ .compatible = "mediatek,mt6781-disp-ccorr",
+	  .data = &mt6781_ccorr_driver_data},
 	{},
 };
 
@@ -1216,3 +1230,11 @@ struct platform_driver mtk_disp_ccorr_driver = {
 			.of_match_table = mtk_disp_ccorr_driver_dt_match,
 		},
 };
+
+void disp_ccorr_set_bypass(struct drm_crtc *crtc, int bypass)
+{
+	int ret;
+
+	ret = mtk_crtc_user_cmd(crtc, default_comp, BYPASS_CCORR, &bypass);
+	DDPFUNC("ret = %d", ret);
+}

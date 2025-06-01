@@ -870,7 +870,7 @@ static void config_ap_runtime_data_v2_1(struct ccci_modem *md,
 static struct sk_buff *md_cd_init_rt_header(struct ccci_modem *md,
 	int packet_size, unsigned int tx_ch, int skb_from_pool)
 {
-	struct ccci_header *ccci_h;
+	struct ccci_header *ccci_h = NULL;
 	struct sk_buff *skb = NULL;
 
 	skb = ccci_alloc_skb(packet_size, skb_from_pool, 1);
@@ -898,8 +898,8 @@ static int md_cd_send_runtime_data_v2(struct ccci_modem *md,
 #if (MD_GENERATION <= 6292)
 	struct sk_buff *skb = NULL;
 #endif
-	struct ap_query_md_feature *ap_rt_data;
-	struct ap_query_md_feature_v2_1 *ap_rt_data_v2_1;
+	struct ap_query_md_feature *ap_rt_data = NULL;
+	struct ap_query_md_feature_v2_1 *ap_rt_data_v2_1 = NULL;
 	int ret;
 
 	if (md->runtime_version < AP_MD_HS_V2) {
@@ -1134,8 +1134,8 @@ static int md_cd_dump_info(struct ccci_modem *md,
 	}
 	if (flag & DUMP_FLAG_SMEM_CCB_DATA) {
 		int i, j;
-		unsigned char *curr_ch_p;
-		unsigned int *curr_p;
+		unsigned char *curr_ch_p = NULL;
+		unsigned int *curr_p = NULL;
 		struct ccci_smem_region *ccb_data =
 			ccci_md_get_smem_by_user_id(md->index,
 				SMEM_USER_CCB_START);
@@ -1191,12 +1191,6 @@ static int md_cd_dump_info(struct ccci_modem *md,
 					curr_p, *curr_p, *(curr_p + 1),
 					*(curr_p + 2), *(curr_p + 3));
 		}
-	}
-	if (flag & DUMP_FLAG_IMAGE) {
-		CCCI_MEM_LOG_TAG(md->index, TAG, "Dump MD image memory\n");
-		ccci_util_mem_dump(md->index, CCCI_DUMP_MEM_DUMP,
-			(void *)md->mem_layout.md_bank0.base_ap_view_vir,
-			MD_IMG_DUMP_SIZE);
 	}
 	if (flag & DUMP_FLAG_LAYOUT) {
 		CCCI_MEM_LOG_TAG(md->index, TAG, "Dump MD layout struct\n");
@@ -1368,9 +1362,40 @@ static ssize_t md_cd_parameter_store(struct ccci_modem *md,
 	return count;
 }
 
+static ssize_t md_net_speed_show(struct ccci_modem *md, char *buf)
+{
+	return snprintf(buf, 4096, "curr netspeed log:%d\n",
+		mtk_ccci_toggle_net_speed_log());
+}
+
+extern int ccci_get_md_smem_buf(char **pbuf, unsigned int *size);
+
+static ssize_t md_cd_smem_show(struct ccci_modem *md, char *buf)
+{
+	char *smem_buf = NULL;
+	unsigned int smem_size;
+	int n, ret;
+
+	if (!buf)
+		return 0;
+
+	ret = ccci_get_md_smem_buf(&smem_buf, &smem_size);
+	if (ret < 0)
+		return 0;
+
+	n = snprintf(buf, 4096, "%s", smem_buf);
+	if (n >= 4096)
+		return (4096 - 1);
+	else
+		return n;
+}
+
+CCCI_MD_ATTR(NULL, md_smem, 0440, md_cd_smem_show, NULL);
+
 CCCI_MD_ATTR(NULL, dump, 0660, md_cd_dump_show, md_cd_dump_store);
 CCCI_MD_ATTR(NULL, parameter, 0660, md_cd_parameter_show,
 	md_cd_parameter_store);
+CCCI_MD_ATTR(NULL, net_speed, 0660, md_net_speed_show, NULL);
 
 static void md_cd_sysfs_init(struct ccci_modem *md)
 {
@@ -1389,6 +1414,18 @@ static void md_cd_sysfs_init(struct ccci_modem *md)
 		CCCI_ERROR_LOG(md->index, TAG,
 			"fail to add sysfs node %s %d\n",
 			ccci_md_attr_parameter.attr.name, ret);
+
+	ret = sysfs_create_file(&md->kobj, &ccci_md_attr_net_speed.attr);
+	if (ret)
+		CCCI_ERROR_LOG(md->index, TAG,
+			"fail to add sysfs node %s %d\n",
+			ccci_md_attr_net_speed.attr.name, ret);
+
+	ret = sysfs_create_file(&md->kobj, &ccci_md_attr_md_smem.attr);
+	if (ret)
+		CCCI_ERROR_LOG(md->index, TAG,
+			"fail to add sysfs node %s %d\n",
+			ccci_md_attr_md_smem.attr.name, ret);
 }
 
 static struct syscore_ops ccci_modem_sysops = {
@@ -1400,8 +1437,8 @@ static struct syscore_ops ccci_modem_sysops = {
 static u64 cldma_dmamask = DMA_BIT_MASK(36);
 static int ccci_modem_probe(struct platform_device *plat_dev)
 {
-	struct ccci_modem *md;
-	struct md_sys1_info *md_info;
+	struct ccci_modem *md = NULL;
+	struct md_sys1_info *md_info = NULL;
 	int md_id;
 	struct ccci_dev_cfg dev_cfg;
 	int ret;

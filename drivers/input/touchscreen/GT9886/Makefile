@@ -3,9 +3,7 @@
 # Use xxxproject/Makefile-release when release driver
 #
 # core layer
-#ccflags-$(CONFIG_DRM_MEDIATEK) += -I$(srctree)/drivers/gpu/drm/mediatek/
-ccflags-$(CONFIG_DRM_MEDIATEK_BOMB) += -I$(srctree)/drivers/gpu/drm/mediatek/
-ccflags-$(CONFIG_DRM_MEDIATEK_CANNON) += -I$(srctree)/drivers/gpu/drm/mediatek_cannon/
+ccflags-$(CONFIG_DRM_MEDIATEK) += -I$(srctree)/drivers/gpu/drm/mediatek/
 
 obj-y += goodix_ts_i2c.o
 obj-y += goodix_ts_core.o

@@ -2,7 +2,6 @@
  * HDMI support
  *
  * Copyright (C) 2013 ITE Tech. Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Hermes Wu <hermes.wu@ite.com.tw>
  *
  * HDMI TX driver for IT66121

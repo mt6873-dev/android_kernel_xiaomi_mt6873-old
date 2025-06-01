@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2020 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,6 +14,8 @@
 #ifndef __MTK_SWPM_SP_INTERFACE_H__
 #define __MTK_SWPM_SP_INTERFACE_H__
 
+#define MAX_IP_NAME_LENGTH (16)
+
 struct ip_vol_times {
 	int32_t vol;
 	int64_t active_time;
@@ -22,7 +23,7 @@ struct ip_vol_times {
 	int64_t off_time;
 };
 struct ip_stats {
-	char ip_name[16];
+	char ip_name[MAX_IP_NAME_LENGTH];
 	struct ip_vol_times *vol_times;
 };
 struct vol_duration {
@@ -42,10 +43,11 @@ struct ddr_bc_stats {
 	uint64_t value;
 };
 struct ddr_ip_bc_stats {
-	char ip_name[16];
+	char ip_name[MAX_IP_NAME_LENGTH];
 	struct ddr_bc_stats *bc_stats;
 };
 
+extern int32_t sync_latest_data(void);
 extern int32_t get_ddr_act_times(int32_t freq_num,
 				 struct ddr_act_times *ddr_times);
 extern int32_t get_ddr_sr_pd_times(struct ddr_sr_pd_times *ddr_times);

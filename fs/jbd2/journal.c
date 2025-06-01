@@ -4,7 +4,6 @@
  * Written by Stephen C. Tweedie <sct@redhat.com>, 1998
  *
  * Copyright 1998 Red Hat corp --- All Rights Reserved
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This file is part of the Linux kernel and is made available under
  * the terms of the GNU General Public License, version 2, or at your
@@ -745,24 +744,6 @@ int jbd2_log_wait_commit(journal_t *journal, tid_t tid)
 	return err;
 }
 
-
-int jbd2_transaction_need_wait(journal_t *journal, tid_t tid)
-{
-	int need_to_wait = 1;
-	read_lock(&journal->j_state_lock);
-	if (journal->j_running_transaction &&
-	journal->j_running_transaction->t_tid == tid) {
-		if (journal->j_commit_request != tid) {
-			/* transaction not yet started, so request it */
-			need_to_wait = 1;
-		}
-	} else if (!(journal->j_committing_transaction &&
-		journal->j_committing_transaction->t_tid == tid))
-			need_to_wait = 0;
-	read_unlock(&journal->j_state_lock);
-	return need_to_wait;
-}
-
 /*
  * When this function returns the transaction corresponding to tid
  * will be completed.  If the transaction has currently running, start
@@ -1379,10 +1360,8 @@ static int jbd2_write_superblock(journal_t *journal, int write_flags)
 	int ret;
 
 	/* Buffer got discarded which means block device got invalidated */
-	if (!buffer_mapped(bh)) {
-		unlock_buffer(bh);
+	if (!buffer_mapped(bh))
 		return -EIO;
-	}
 
 	trace_jbd2_write_superblock(journal, write_flags);
 	if (!(journal->j_flags & JBD2_BARRIER))
@@ -2606,8 +2585,6 @@ void jbd2_journal_init_jbd_inode(struct jbd2_inode *jinode, struct inode *inode)
 	jinode->i_flags = 0;
 	jinode->i_dirty_start = 0;
 	jinode->i_dirty_end = 0;
-	jinode->i_next_dirty_start = 0;
-	jinode->i_next_dirty_end = 0;
 	INIT_LIST_HEAD(&jinode->i_list);
 }
 

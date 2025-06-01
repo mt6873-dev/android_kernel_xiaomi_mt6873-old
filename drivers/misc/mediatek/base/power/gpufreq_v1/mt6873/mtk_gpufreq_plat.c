@@ -2916,7 +2916,7 @@ static void __mt_gpufreq_kick_pbm(int enable)
 	unsigned int power;
 	unsigned int cur_freq;
 	unsigned int cur_vgpu;
-	unsigned int found = 0;
+	bool found = 0;
 	int tmp_idx = -1;
 	int i;
 
@@ -3602,12 +3602,6 @@ out:
 static void __exit __mt_gpufreq_exit(void)
 {
 	platform_driver_unregister(&g_gpufreq_pdrv);
-}
-
-/* API : get immediate gpu temperature */
-int mt_gpufreq_get_immed_gpu_temp(void)
-{
-	return get_immediate_gpu_wrap();
 }
 
 module_init(__mt_gpufreq_init);

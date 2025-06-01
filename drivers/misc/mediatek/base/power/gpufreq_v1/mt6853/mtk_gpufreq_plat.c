@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1788,7 +1787,7 @@ static struct opp_table_info *__mt_gpufreq_get_segment_table(void)
 		return g_opp_table_segment_3;
 	default:
 		gpufreq_pr_info("invalid efuse id: 0x%x\n", efuse_id);
-		return g_opp_table_segment_3;
+		return g_opp_table_segment_1;
 	}
 #endif
 }
@@ -2936,7 +2935,7 @@ static void __mt_gpufreq_kick_pbm(int enable)
 	unsigned int power;
 	unsigned int cur_freq;
 	unsigned int cur_vgpu;
-	unsigned int found = 0;
+	bool found = 0;
 	int tmp_idx = -1;
 	int i;
 
@@ -3562,12 +3561,6 @@ out:
 static void __exit __mt_gpufreq_exit(void)
 {
 	platform_driver_unregister(&g_gpufreq_pdrv);
-}
-
-/* API : get immediate gpu temperature */
-int mt_gpufreq_get_immed_gpu_temp(void)
-{
-	return get_immediate_gpu_wrap();
 }
 
 module_init(__mt_gpufreq_init);

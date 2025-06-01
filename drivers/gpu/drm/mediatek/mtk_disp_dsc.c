@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -49,7 +48,7 @@
 	#define DSC_ERR BIT(1)
 	#define DSC_ZERO_FIFO BIT(2)
 	#define DSC_ABN_EOF BIT(3)
-	
+
 #define DISP_REG_DSC_INTACK			0x000C
 #define DISP_REG_DSC_PIC_W			0x0018
 	#define CFG_FLD_PIC_WIDTH	REG_FLD_MSB_LSB(15, 0)
@@ -100,7 +99,8 @@
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893)
 #define DISP_REG_DSC_SHADOW			0x0200
 	#define DSC_FORCE_COMMIT BIT(1)
-#elif defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853)
+#elif defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
+	|| defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 #define DISP_REG_DSC_SHADOW			0x0200
 #define DSC_FORCE_COMMIT	BIT(0)
 #define DSC_BYPASS_SHADOW	BIT(1)
@@ -178,7 +178,8 @@ static void mtk_dsc_start(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 	struct mtk_disp_dsc *dsc = comp_to_dsc(comp);
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893) \
-	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853)
+	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
+	|| defined(CONFIG_MACH_MT6877)
 	mtk_ddp_write_mask(comp, DSC_FORCE_COMMIT,
 		DISP_REG_DSC_SHADOW, DSC_FORCE_COMMIT, handle);
 #endif
@@ -190,10 +191,6 @@ static void mtk_dsc_start(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		/* DSC Empty flag always high */
 		mtk_ddp_write_mask(comp, 0x4000, DISP_REG_DSC_CON,
 				DSC_EMPTY_FLAG_SEL, handle);
-
-		/* DSC output buffer as FHD(plus) */
-		mtk_ddp_write_mask(comp, 0x800002C2, DISP_REG_DSC_OBUF,
-			0xFFFFFFFF, handle);
 	}
 
 	DDPINFO("%s, dsc_start:0x%x\n",
@@ -217,7 +214,8 @@ static void mtk_dsc_prepare(struct mtk_ddp_comp *comp)
 
 	mtk_ddp_comp_clk_prepare(comp);
 
-#if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853)
+#if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
+	|| defined(CONFIG_MACH_MT6877)
 #if defined(CONFIG_DRM_MTK_SHADOW_REGISTER_SUPPORT)
 	if (dsc->data->support_shadow) {
 		/* Enable shadow register and read shadow register */
@@ -393,9 +391,8 @@ static void mtk_dsc_config(struct mtk_ddp_comp *comp,
 			dsc_params->slice_width-1) / dsc_params->slice_width;
 		init_delay_height_min =
 			(init_delay_limit > 15) ? 15 : init_delay_limit;
-		init_delay_height = init_delay_height_min;
-
 		init_delay_height = 4;
+
 		reg_val = (!!dsc_params->slice_mode) |
 					(!!dsc_params->rgb_swap << 2) |
 					(init_delay_height << 8);
@@ -412,8 +409,10 @@ static void mtk_dsc_config(struct mtk_ddp_comp *comp,
 		mtk_ddp_write_mask(comp, DSC_CKSM_CAL_EN,
 					DISP_REG_DSC_DBG_CON, DSC_CKSM_CAL_EN,
 					handle);
+
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893) \
-	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853)
+	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
+	|| defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 		mtk_ddp_write_mask(comp,
 			(((dsc_params->ver & 0xf) == 2) ? 0x40 : 0x20),
 			DISP_REG_DSC_SHADOW, 0x60, handle);
@@ -557,7 +556,8 @@ void mtk_dsc_dump(struct mtk_ddp_comp *comp)
 	DDPDUMP("(0x018)DSC_WIDTH=0x%x\n", readl(baddr + DISP_REG_DSC_PIC_W));
 	DDPDUMP("(0x01C)DSC_HEIGHT=0x%x\n", readl(baddr + DISP_REG_DSC_PIC_H));
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893) \
-	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853)
+	|| defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
+	|| defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 	DDPDUMP("(0x200)DSC_SHADOW=0x%x\n",
 		readl(baddr + DISP_REG_DSC_SHADOW));
 #endif
@@ -703,6 +703,14 @@ static const struct mtk_disp_dsc_data mt6853_dsc_driver_data = {
 	.support_shadow = false,
 };
 
+static const struct mtk_disp_dsc_data mt6877_dsc_driver_data = {
+	.support_shadow = false,
+};
+
+static const struct mtk_disp_dsc_data mt6781_dsc_driver_data = {
+	.support_shadow = false,
+};
+
 static const struct of_device_id mtk_disp_dsc_driver_dt_match[] = {
 	{ .compatible = "mediatek,mt6885-disp-dsc",
 	  .data = &mt6885_dsc_driver_data},
@@ -710,6 +718,10 @@ static const struct of_device_id mtk_disp_dsc_driver_dt_match[] = {
 	  .data = &mt6873_dsc_driver_data},
 	{ .compatible = "mediatek,mt6853-disp-dsc",
 	  .data = &mt6853_dsc_driver_data},
+	{ .compatible = "mediatek,mt6877-disp-dsc",
+	  .data = &mt6877_dsc_driver_data},
+	{ .compatible = "mediatek,mt6781-disp-dsc",
+	  .data = &mt6781_dsc_driver_data},
 	{},
 };
 

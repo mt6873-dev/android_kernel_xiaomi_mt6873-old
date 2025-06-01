@@ -46,6 +46,7 @@ enum TASK_STATE_ENUM {
 
 /* max count of input */
 #define CMDQ_MAX_COMMAND_SIZE		(0x80000000)
+#define CMDQ_MAX_SIMULATE_COMMAND_SIZE	(0x80000)
 #define CMDQ_MAX_DUMP_REG_COUNT		(2048)
 #define CMDQ_MAX_WRITE_ADDR_COUNT	(PAGE_SIZE / sizeof(u32))
 #define CMDQ_MAX_DBG_STR_LEN		(1024)
@@ -71,14 +72,14 @@ struct DumpFirstErrorStruct {
 
 #define CMDQ_LOG(string, args...) \
 do {			\
-	pr_debug("[CMDQ]"string, ##args); \
+	pr_notice("[CMDQ]"string, ##args); \
 	cmdq_core_save_first_dump("[CMDQ]"string, ##args); \
 } while (0)
 
 #define CMDQ_MSG(string, args...) \
 do {			\
 	if (cmdq_core_should_print_msg()) { \
-		pr_debug("[CMDQ]"string, ##args); \
+		pr_notice("[CMDQ]"string, ##args); \
 	} \
 } while (0)
 
@@ -92,7 +93,7 @@ do { \
 
 #define CMDQ_ERR(string, args...) \
 do {			\
-	pr_err("[CMDQ][ERR]"string, ##args); \
+	pr_notice("[CMDQ][ERR]"string, ##args); \
 	cmdq_core_save_first_dump("[CMDQ][ERR]"string, ##args); \
 } while (0)
 
@@ -110,7 +111,7 @@ do {			\
 	int len = snprintf(dispatchedTag, 50, "CRDISPATCH_KEY:%s", tag); \
 	if (len >= 50) \
 		pr_debug("%s:%d len:%d over 50\n", __func__, __LINE__, len); \
-	pr_warn("[CMDQ][AEE]"string, ##args); \
+	pr_notice("[CMDQ][AEE]"string, ##args); \
 	cmdq_core_save_first_dump("[CMDQ][AEE]"string, ##args); \
 	cmdq_core_turnoff_first_dump(); \
 	aee_kernel_warning_api(__FILE__, __LINE__, \
@@ -538,6 +539,7 @@ struct WriteAddrStruct {
 	void *va;
 	dma_addr_t pa;
 	pid_t user;
+	bool pool;
 };
 
 /* resource unit between each module */
@@ -855,9 +857,11 @@ s32 cmdq_core_save_first_dump(const char *string, ...);
 
 /* Allocate/Free HW use buffer, e.g. command buffer forCMDQ HW */
 void *cmdq_core_alloc_hw_buffer_clt(struct device *dev, size_t size,
-	dma_addr_t *dma_handle, const gfp_t flag, enum CMDQ_CLT_ENUM clt);
+	dma_addr_t *dma_handle, const gfp_t flag, enum CMDQ_CLT_ENUM clt,
+	bool *pool);
 void cmdq_core_free_hw_buffer_clt(struct device *dev, size_t size,
-	void *cpu_addr, dma_addr_t dma_handle, enum CMDQ_CLT_ENUM clt);
+	void *cpu_addr, dma_addr_t dma_handle, enum CMDQ_CLT_ENUM clt,
+	bool pool);
 void *cmdq_core_alloc_hw_buffer(struct device *dev,
 	size_t size, dma_addr_t *dma_handle, const gfp_t flag);
 void cmdq_core_free_hw_buffer(struct device *dev, size_t size,

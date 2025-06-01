@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,9 +49,18 @@ struct mtk_vcodec_pm {
 
 };
 
+enum mtk_dec_dump_addr_type {
+	DUMP_VDEC_IN_BUF,
+	DUMP_VDEC_OUT_BUF,
+	DUMP_VDEC_REF_BUF,
+	DUMP_VDEC_MV_BUF,
+};
+
 enum mtk_dec_dtsi_reg_idx {
 	VDEC_SYS,
 	VDEC_VLD,
+	VDEC_MC,
+	VDEC_MV,
 	VDEC_MISC,
 	NUM_MAX_VDEC_REG_BASE,
 };

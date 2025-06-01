@@ -2,7 +2,6 @@
  * mtu3_gadget.c - MediaTek usb3 DRD peripheral support
  *
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * Author: Chunfeng Yun <chunfeng.yun@mediatek.com>
  *
@@ -347,21 +346,12 @@ struct usb_request *mtu3_alloc_request(struct usb_ep *ep, gfp_t gfp_flags)
 
 void mtu3_free_request(struct usb_ep *ep, struct usb_request *req)
 {
-	struct mtu3_request *mreq = to_mtu3_request(req);
-	struct mtu3_request *r;
 	struct mtu3_ep *mep = to_mtu3_ep(ep);
 	struct mtu3 *mtu = mep->mtu;
 	unsigned long flags;
 
 	spin_lock_irqsave(&mtu->lock, flags);
-	list_for_each_entry(r, &mep->req_list, list) {
-		if (r == mreq) {
-			list_del(&mreq->list);
-			break;
-		}
-	}
-
-	kfree(mreq);
+	kfree(to_mtu3_request(req));
 	spin_unlock_irqrestore(&mtu->lock, flags);
 }
 
@@ -717,7 +707,6 @@ static int mtu3_gadget_stop(struct usb_gadget *g)
 
 	spin_unlock_irqrestore(&mtu->lock, flags);
 
-	synchronize_irq(mtu->irq);
 	return 0;
 }
 
@@ -861,11 +850,6 @@ void mtu3_gadget_suspend(struct mtu3 *mtu)
 void mtu3_gadget_disconnect(struct mtu3 *mtu)
 {
 	struct usb_gadget_driver *driver;
-
-	if (!mtu) {
-		pr_err("[%s] mtu3 is null\n", __func__);
-		return;
-	}
 
 	dev_info(mtu->dev, "gadget DISCONNECT\n");
 	if (mtu->gadget_driver && mtu->gadget_driver->disconnect) {

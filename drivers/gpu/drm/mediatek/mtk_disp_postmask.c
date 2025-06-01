@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -316,10 +315,11 @@ static void mtk_postmask_config(struct mtk_ddp_comp *comp,
 			 REG_FLD_VAL((CFG_FLD_STALL_CG_ON), 1));
 		mtk_ddp_write_relaxed(comp, value, DISP_POSTMASK_CFG, handle);
 
-		mtk_ddp_write_relaxed(comp, addr, DISP_POSTMASK_MEM_ADDR, handle);
+		mtk_ddp_write_relaxed(comp, addr, DISP_POSTMASK_MEM_ADDR,
+				      handle);
 
-		mtk_ddp_write_relaxed(comp, size, DISP_POSTMASK_MEM_LENGTH, handle);
-
+		mtk_ddp_write_relaxed(comp, size, DISP_POSTMASK_MEM_LENGTH,
+				      handle);
 #else
 		value = (REG_FLD_VAL((CFG_FLD_RELAY_MODE), 0) |
 			 REG_FLD_VAL((CFG_FLD_DRAM_MODE), 0) |
@@ -606,7 +606,15 @@ static const struct mtk_disp_postmask_data mt6853_postmask_driver_data = {
 	.support_shadow = false,
 };
 
+static const struct mtk_disp_postmask_data mt6877_postmask_driver_data = {
+	.support_shadow = false,
+};
+
 static const struct mtk_disp_postmask_data mt6833_postmask_driver_data = {
+	.support_shadow = false,
+};
+
+static const struct mtk_disp_postmask_data mt6781_postmask_driver_data = {
 	.support_shadow = false,
 };
 
@@ -619,8 +627,12 @@ static const struct of_device_id mtk_disp_postmask_driver_dt_match[] = {
 	  .data = &mt6873_postmask_driver_data},
 	{ .compatible = "mediatek,mt6853-disp-postmask",
 	  .data = &mt6853_postmask_driver_data},
+	{ .compatible = "mediatek,mt6877-disp-postmask",
+	  .data = &mt6877_postmask_driver_data},
 	{ .compatible = "mediatek,mt6833-disp-postmask",
 	  .data = &mt6833_postmask_driver_data},
+	{ .compatible = "mediatek,mt6781-disp-postmask",
+	  .data = &mt6781_postmask_driver_data},
 	{},
 };
 

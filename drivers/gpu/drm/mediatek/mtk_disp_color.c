@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -2280,7 +2279,6 @@ static bool color_get_MDP_AAL0_REG(struct resource *res)
 
 	return true;
 }
-
 static bool color_get_DISP_COLOR1_REG(struct resource *res)
 {
 	int rc = 0;
@@ -2847,7 +2845,8 @@ int mtk_drm_ioctl_read_reg(struct drm_device *dev, void *data,
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	// For 6885 CCORR COEF, real values need to right shift one bit
 	if (pa >= ccorr_comp->regs_pa + CCORR_REG(0) &&
 		pa <= ccorr_comp->regs_pa + CCORR_REG(4))
@@ -2889,7 +2888,8 @@ int mtk_drm_ioctl_write_reg(struct drm_device *dev, void *data,
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	// For 6885 CCORR COEF, real values need to left shift one bit
 	if (pa >= ccorr_comp->regs_pa + CCORR_REG(0) &&
 		pa <= ccorr_comp->regs_pa + CCORR_REG(4))
@@ -3013,10 +3013,12 @@ static void mtk_color_stop(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		DRM_ERROR("Failed to disable power domain: %d\n", ret);
 }
 
-static void mtk_color_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_color_bypass(struct mtk_ddp_comp *comp, int bypass,
+	struct cmdq_pkt *handle)
 {
 	struct mtk_disp_color *color = comp_to_color(comp);
 
+	DDPINFO("%s: bypass: %d\n", __func__, bypass);
 	cmdq_pkt_write(handle, comp->cmdq_base,
 		       comp->regs_pa + DISP_COLOR_CFG_MAIN,
 		       COLOR_BYPASS_ALL | COLOR_SEQ_SEL, ~0);
@@ -3195,7 +3197,8 @@ static void mtk_color_prepare(struct mtk_ddp_comp *comp)
 	}
 #else
 #if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) \
-	|| defined(CONFIG_MACH_MT6833)
+	|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6877) \
+	|| defined(CONFIG_MACH_MT6781)
 	/* Bypass shadow register and read shadow register */
 	mtk_ddp_write_mask_cpu(comp, COLOR_BYPASS_SHADOW,
 		DISP_COLOR_SHADOW_CTRL, COLOR_BYPASS_SHADOW);
@@ -3385,12 +3388,32 @@ static const struct mtk_disp_color_data mt6853_color_driver_data = {
 	.support_shadow = false,
 };
 
+static const struct mtk_disp_color_data mt6877_color_driver_data = {
+	.color_offset = DISP_COLOR_START_MT6873,
+	.support_color21 = true,
+	.support_color30 = false,
+	.reg_table = {0x14009000, 0x1400B000, 0x1400C000,
+			0x1400D000, 0x1400F000, 0x1400A000},
+	.color_window = 0x40185E57,
+	.support_shadow = false,
+};
+
 static const struct mtk_disp_color_data mt6833_color_driver_data = {
 	.color_offset = DISP_COLOR_START_MT6873,
 	.support_color21 = true,
 	.support_color30 = false,
-	.reg_table = {0x14009000, 0x1400A000, 0x1400B000,
-			0x1400C000, 0x1400E000},
+	.reg_table = {0x14009000, 0x1400B000, 0x1400C000,
+			0x1400D000, 0x1400F000},
+	.color_window = 0x40185E57,
+	.support_shadow = false,
+};
+
+static const struct mtk_disp_color_data mt6781_color_driver_data = {
+	.color_offset = DISP_COLOR_START_MT6781,
+	.support_color21 = true,
+	.support_color30 = false,
+	.reg_table = {0x14009000, 0x1400B000, 0x1400C000,
+			0x1400D000, 0x1400F000},
 	.color_window = 0x40185E57,
 	.support_shadow = false,
 };
@@ -3408,8 +3431,12 @@ static const struct of_device_id mtk_disp_color_driver_dt_match[] = {
 	 .data = &mt6873_color_driver_data},
 	{.compatible = "mediatek,mt6853-disp-color",
 	 .data = &mt6853_color_driver_data},
+	{.compatible = "mediatek,mt6877-disp-color",
+	 .data = &mt6877_color_driver_data},
 	{.compatible = "mediatek,mt6833-disp-color",
 	 .data = &mt6833_color_driver_data},
+	{.compatible = "mediatek,mt6781-disp-color",
+	 .data = &mt6781_color_driver_data},
 	{},
 };
 MODULE_DEVICE_TABLE(of, mtk_disp_color_driver_dt_match);
@@ -3424,20 +3451,41 @@ struct platform_driver mtk_disp_color_driver = {
 		},
 };
 
-void mtk_color_setbypass(struct mtk_ddp_comp *comp, bool bypass)
+void mtk_color_setbypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle,
+		bool bypass)
 {
 	DDPINFO("%s, bypass: %d\n", __func__, bypass);
 	if (default_comp != NULL) {
 		if (bypass) {
-			mtk_ddp_write_mask_cpu(default_comp, 0x80,
-				DISP_COLOR_CFG_MAIN, COLOR_BYPASS_ALL);
+			if (handle == NULL) {
+				mtk_ddp_write_mask_cpu(default_comp, 0x80,
+					DISP_COLOR_CFG_MAIN, COLOR_BYPASS_ALL);
+			} else {
+				cmdq_pkt_write(handle, default_comp->cmdq_base,
+					default_comp->regs_pa + DISP_COLOR_CFG_MAIN,
+					(1 << 7), 0xFF);
+			}
 			g_color_bypass[index_of_color(default_comp->id)] = 0x1;
 		} else {
-			mtk_ddp_write_mask_cpu(default_comp, 0x0,
-				DISP_COLOR_CFG_MAIN, COLOR_BYPASS_ALL);
+			if (handle == NULL) {
+				mtk_ddp_write_mask_cpu(default_comp, 0x0,
+					DISP_COLOR_CFG_MAIN, COLOR_BYPASS_ALL);
+			} else {
+				cmdq_pkt_write(handle, default_comp->cmdq_base,
+					default_comp->regs_pa + DISP_COLOR_CFG_MAIN,
+					(0 << 7), 0xFF);
+			}
 			g_color_bypass[index_of_color(default_comp->id)] = 0x0;
 		}
 	} else {
 		DDPINFO("%s, default_comp is null\n", __func__);
 	}
+}
+
+void disp_color_set_bypass(struct drm_crtc *crtc, int bypass)
+{
+	int ret;
+
+	ret = mtk_crtc_user_cmd(crtc, default_comp, BYPASS_COLOR, &bypass);
+	DDPFUNC("ret = %d", ret);
 }

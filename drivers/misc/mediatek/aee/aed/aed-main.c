@@ -44,6 +44,7 @@
 #include <linux/rtc.h>
 #include "aed.h"
 #include <linux/highmem.h>
+#include "../mrdump/mrdump_private.h"
 
 struct aee_req_queue {
 	struct list_head list;
@@ -72,6 +73,9 @@ static struct proc_dir_entry *aed_proc_dir;
 
 #define MaxStackSize 8100
 #define MaxMapsSize 65536
+
+static int ee_num;
+static int kernelapi_num;
 
 /******************************************************************************
  * DEBUG UTILITIES
@@ -159,6 +163,11 @@ void msg_show(const char *prefix, struct AE_Msg *msg)
 		msg->len);
 }
 
+int aee_get_mode(void)
+{
+	return aee_mode;
+}
+EXPORT_SYMBOL(aee_get_mode);
 
 /******************************************************************************
  * CONSTANT DEFINITIONS
@@ -279,7 +288,7 @@ static ssize_t msg_copy_to_user(const char *prefix, char *msg, char __user *buf,
 
 	len = ((struct AE_Msg *) msg_tmp)->len + sizeof(struct AE_Msg);
 
-	if (*f_pos >= len) {
+	if ((*f_pos < 0) || (*f_pos >= len)) {
 		ret = 0;
 		goto out;
 	}
@@ -440,6 +449,9 @@ static void ke_gen_userbacktrace_msg(void)
 	char *data;
 	int userinfo_len = 0;
 
+	if (aed_dev.kerec.lastlog->userthread_stack.StackLength < 0)
+		return;
+
 	userinfo_len = aed_dev.kerec.lastlog->userthread_stack.StackLength +
 		sizeof(pid_t)+sizeof(int);
 	rep_msg = msg_create(&aed_dev.kerec.msg, MaxStackSize);
@@ -480,6 +492,9 @@ static void ke_gen_usermaps_msg(void)
 	struct AE_Msg *rep_msg;
 	char *data;
 	int userinfo_len = 0;
+
+	if (aed_dev.kerec.lastlog->userthread_maps.Userthread_mapsLength < 0)
+		return;
 
 	userinfo_len =
 		aed_dev.kerec.lastlog->userthread_maps.Userthread_mapsLength +
@@ -1059,6 +1074,11 @@ static ssize_t aed_ee_write(struct file *filp, const char __user *buf,
 		return -1;
 	}
 
+	if (!buf) {
+		pr_info("%s: ERR, aed_write buf=NULL\n", __func__);
+		return -1;
+	}
+
 	rsize = copy_from_user(&msg, buf, count);
 	if (rsize != 0) {
 		pr_info("%s: ERR, copy_from_user rsize=%d\n", __func__, rsize);
@@ -1195,6 +1215,8 @@ static int current_ke_show(struct seq_file *m, void *p)
 	ke_buffer = m->private;
 	if (ke_buffer == NULL)
 		return 0;
+	if (ke_buffer->size < 0)
+		return 0;
 	if ((unsigned long)p >=
 			(unsigned long)ke_buffer->data + ke_buffer->size)
 		return 0;
@@ -1266,6 +1288,11 @@ static ssize_t aed_ke_write(struct file *filp, const char __user *buf,
 	/* the request must be an * AE_Msg buffer */
 	if (count != sizeof(struct AE_Msg)) {
 		pr_info("ERR: aed_write count=%zx\n", count);
+		return -1;
+	}
+
+	if (!buf) {
+		pr_info("ERR: aed_write buf=NULL\n");
 		return -1;
 	}
 
@@ -1538,6 +1565,11 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int aee_mode_tmp = 0;
 	int aee_force_exp_tmp = 0;
 
+	if (!arg && (cmd != AEEIOCTL_DAL_CLEAN)) {
+		pr_info("ERR: %s arg=NULL\n", __func__);
+		return -EINVAL;
+	}
+
 	if (down_interruptible(&aed_dal_sem) < 0)
 		return -ERESTARTSYS;
 
@@ -1705,15 +1737,14 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				user_ret = task_pt_regs(task);
 				memcpy(&(tmp->regs), user_ret,
 						sizeof(struct pt_regs));
+				rcu_read_unlock();
 				if (copy_to_user
 				    ((struct aee_thread_reg __user *)arg, tmp,
 				     sizeof(struct aee_thread_reg))) {
 					kfree(tmp);
-					rcu_read_unlock();
 					ret = -EFAULT;
 					goto EXIT;
 				}
-				rcu_read_unlock();
 
 			} else {
 				pr_info(
@@ -2143,7 +2174,7 @@ int DumpThreadNativeInfo(struct aee_oops *oops)
 	unsigned long userstack_end = 0, length = 0;
 	int mapcount = 0;
 	struct file *file;
-	int flags;
+	unsigned long flags;
 	struct mm_struct *mm;
 	int ret = 0;
 	char tpath[512];
@@ -2263,6 +2294,10 @@ int DumpThreadNativeInfo(struct aee_oops *oops)
 							(MaxStackSize-1);
 	oops->userthread_stack.StackLength = length;
 
+	if (!userstack_start) {
+		pr_info("ERR: %s userstack_start = NULL\n", __func__);
+		return 0;
+	}
 
 	ret = copy_from_user((void *)(oops->userthread_stack.Userthread_Stack),
 			(const void __user *)(userstack_start), length);
@@ -2289,6 +2324,10 @@ int DumpThreadNativeInfo(struct aee_oops *oops)
 		     (MaxStackSize-1)) ? (userstack_end - userstack_start) :
 							(MaxStackSize-1);
 		oops->userthread_stack.StackLength = length;
+		if (!userstack_start) {
+			pr_info("ERR: %s userstack_start=NULL\n", __func__);
+			return 0;
+		}
 		ret = copy_from_user(
 			(void *)(oops->userthread_stack.Userthread_Stack),
 			(const void __user *)(userstack_start), length);
@@ -2314,6 +2353,10 @@ int DumpThreadNativeInfo(struct aee_oops *oops)
 		     (MaxStackSize-1)) ? (userstack_end - userstack_start) :
 			(MaxStackSize-1);
 		oops->userthread_stack.StackLength = length;
+		if (!userstack_start) {
+			pr_info("ERR: %s userstack_start = NULL\n", __func__);
+			return 0;
+		}
 		ret = copy_from_user(
 			(void *)(oops->userthread_stack.Userthread_Stack),
 			(const void __user *)(userstack_start), length);
@@ -2334,8 +2377,12 @@ static void kernel_reportAPI(const enum AE_DEFECT_ATTR attr, const int db_opt,
 
 	if ((aee_mode >= AEE_MODE_CUSTOMER_USER || (aee_mode ==
 		AEE_MODE_CUSTOMER_ENG && attr == AE_DEFECT_WARNING))
-		&& (attr != AE_DEFECT_FATAL))
-		return;
+		&& (attr != AE_DEFECT_FATAL)) {
+		if (!aed_get_status() && (kernelapi_num < 5))
+			kernelapi_num++;
+		else
+			return;
+	}
 	oops = aee_oops_create(attr, AE_KERNEL_PROBLEM_REPORT, module);
 	if (oops != NULL) {
 		do_gettimeofday(&tv);
@@ -2407,8 +2454,12 @@ static void external_exception(const char *assert_type, const int *log,
 	char trigger_time[60];
 
 	if ((aee_mode >= AEE_MODE_CUSTOMER_USER) &&
-		(aee_force_exp == AEE_FORCE_EXP_NOT_SET))
-		return;
+		(aee_force_exp == AEE_FORCE_EXP_NOT_SET)) {
+		if (!aed_get_status() && (ee_num < 5))
+			ee_num++;
+		else
+			return;
+	}
 	eerec = kzalloc(sizeof(struct aed_eerec), GFP_ATOMIC);
 	if (eerec == NULL) {
 		return;
@@ -2621,6 +2672,11 @@ static struct miscdevice aed_ke_dev = {
 static int __init aed_init(void)
 {
 	int err = 0;
+
+	if (!aee_is_enable()) {
+		pr_info("%s: aee is disable\n", __func__);
+		return 0;
+	}
 
 	err = aed_proc_init();
 	if (err != 0)

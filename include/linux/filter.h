@@ -67,14 +67,6 @@ struct bpf_prog_aux;
 
 /* ALU ops on registers, bpf_add|sub|...: dst_reg += src_reg */
 
-#define BPF_ALU_REG(CLASS, OP, DST, SRC)			\
-	((struct bpf_insn) {					\
-		.code  = CLASS | BPF_OP(OP) | BPF_X,		\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = 0,					\
-		.imm   = 0 })
-
 #define BPF_ALU64_REG(OP, DST, SRC)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_OP(OP) | BPF_X,	\
@@ -121,14 +113,6 @@ struct bpf_prog_aux;
 
 /* Short form of mov, dst_reg = src_reg */
 
-#define BPF_MOV_REG(CLASS, DST, SRC)				\
-	((struct bpf_insn) {					\
-		.code  = CLASS | BPF_MOV | BPF_X,		\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = 0,					\
-		.imm   = 0 })
-
 #define BPF_MOV64_REG(DST, SRC)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_MOV | BPF_X,		\
@@ -162,14 +146,6 @@ struct bpf_prog_aux;
 		.src_reg = 0,					\
 		.off   = 0,					\
 		.imm   = IMM })
-
-#define BPF_RAW_REG(insn, DST, SRC)				\
-	((struct bpf_insn) {					\
-		.code  = (insn).code,				\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = (insn).off,				\
-		.imm   = (insn).imm })
 
 /* BPF_LD_IMM64 macro encodes single 'load 64-bit immediate' insn */
 #define BPF_LD_IMM64(DST, IMM)					\
@@ -485,7 +461,6 @@ struct bpf_prog {
 				cb_access:1,	/* Is control block accessed? */
 				dst_needed:1;	/* Do we need dst entry? */
 	enum bpf_prog_type	type;		/* Type of BPF program */
-	enum bpf_attach_type	expected_attach_type; /* For some prog types */
 	u32			len;		/* Number of filter blocks */
 	u32			jited_len;	/* Size of jited insns in bytes */
 	u8			tag[BPF_TAG_SIZE];
@@ -815,7 +790,6 @@ extern int bpf_jit_enable;
 extern int bpf_jit_harden;
 extern int bpf_jit_kallsyms;
 extern long bpf_jit_limit;
-extern long bpf_jit_limit_max;
 
 typedef void (*bpf_jit_fill_hole_t)(void *area, unsigned int size);
 
@@ -1042,16 +1016,6 @@ static inline int bpf_tell_extensions(void)
 {
 	return SKF_AD_MAX;
 }
-
-struct bpf_sock_addr_kern {
-	struct sock *sk;
-	struct sockaddr *uaddr;
-	/* Temporary "register" to make indirect stores to nested structures
-	 * defined above. We need three registers to make such a store, but
-	 * only two (src and dst) are available at convert_ctx_access time
-	 */
-	u64 tmp_reg;
-};
 
 struct bpf_sock_ops_kern {
 	struct	sock *sk;

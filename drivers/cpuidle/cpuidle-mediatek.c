@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 
@@ -38,6 +37,9 @@ static int mtk_idle_state_enter(struct cpuidle_device *dev,
 				int idx)
 {
 	int ret;
+
+	if (idx < 0 || idx >= CPUIDLE_STATE_MAX)
+		return -1;
 
 	if (mtk_pwr_conservation) {
 		ret = mtk_pwr_conservation(MTK_CPUIDLE_PREPARE, drv, idx);

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1883,6 +1882,10 @@ int wakeup_fg_algo(unsigned int flow_state)
 		wakeup_fg_algo_recovery(flow_state);
 		return 0;
 	}
+
+	zcv_filter_add(&gm.zcvf);
+	zcv_filter_dump(&gm.zcvf);
+	zcv_check(&gm.zcvf);
 
 	gm3_log_notify(flow_state);
 
@@ -4304,6 +4307,10 @@ static int battery_suspend(struct platform_device *dev, pm_message_t state)
 
 static int battery_resume(struct platform_device *dev)
 {
+	zcv_filter_add(&gm.zcvf);
+	zcv_filter_dump(&gm.zcvf);
+	zcv_check(&gm.zcvf);
+
 	bm_err("******** %s!! iavg=%d ***GM3 disable:%d %d %d %d***\n",
 		__func__,
 		gm.hw_status.iavg_intr_flag,

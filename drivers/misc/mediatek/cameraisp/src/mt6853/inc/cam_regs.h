@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -625,6 +624,12 @@ enum{
 #define CAM_REG_BPCI_R2_CON2(module)            (isp_devs[module].regs + 0x431C)
 #define CAM_REG_BPCI_R2_CON3(module)            (isp_devs[module].regs + 0x4320)
 #define CAM_REG_BPCI_R2_CON4(module)            (isp_devs[module].regs + 0x4328)
+
+#define CAM_REG_BPCI_R3_DRS(module)             (isp_devs[module].regs + 0x4338)
+#define CAM_REG_BPCI_R3_CON(module)             (isp_devs[module].regs + 0x4348)
+#define CAM_REG_BPCI_R3_CON2(module)            (isp_devs[module].regs + 0x434C)
+#define CAM_REG_BPCI_R3_CON3(module)            (isp_devs[module].regs + 0x4350)
+#define CAM_REG_BPCI_R3_CON4(module)            (isp_devs[module].regs + 0x4358)
 
 #define CAM_REG_LSCI_DRS(module)                (isp_devs[module].regs + 0x4398)
 #define CAM_REG_LSCI_CON(module)                (isp_devs[module].regs + 0x43A8)

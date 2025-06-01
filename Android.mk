@@ -15,24 +15,13 @@ ifeq ($(notdir $(LOCAL_PATH)),$(strip $(LINUX_KERNEL_VERSION)))
 ifneq ($(strip $(TARGET_NO_KERNEL)),true)
 include $(LOCAL_PATH)/kenv.mk
 
-$(TARGET_FACTORY_BUILD_CONFIG): \
-	$(info $(shell if [ $(FACTORY_BUILD) = 1 ]; then \
-		echo "FACTORY_BUILD: add CONFIG_FACTORY_BUILD=y to $(KERNEL_CONFIG_FILE)"; \
-		echo "CONFIG_FACTORY_BUILD=y" >> $(KERNEL_CONFIG_FILE); \
-		echo "FACTORY_BUILD: remove CONFIG_MTK_KERNEL_POWER_OFF_CHARGING=y from $(KERNEL_CONFIG_FILE)"; \
-		sed -i '/CONFIG_MTK_KERNEL_POWER_OFF_CHARGING=y/d' $(KERNEL_CONFIG_FILE); \
-	else \
-		echo "Not FACTORY_BUILD: remove CONFIG_FACTORY_BUILD=y from $(KERNEL_CONFIG_FILE)"; \
-		sed -i '/CONFIG_FACTORY_BUILD=y/d' $(KERNEL_CONFIG_FILE); \
-	fi))
-
 ifeq ($(wildcard $(TARGET_PREBUILT_KERNEL)),)
 KERNEL_MAKE_DEPENDENCIES := $(shell find $(KERNEL_DIR) -name .git -prune -o -type f | sort)
 KERNEL_MAKE_DEPENDENCIES := $(filter-out %/.git %/.gitignore %/.gitattributes,$(KERNEL_MAKE_DEPENDENCIES))
 
 $(TARGET_KERNEL_CONFIG): PRIVATE_DIR := $(KERNEL_DIR)
 $(TARGET_KERNEL_CONFIG): $(KERNEL_CONFIG_FILE) $(LOCAL_PATH)/Android.mk
-$(TARGET_KERNEL_CONFIG): $(KERNEL_MAKE_DEPENDENCIES) $(TARGET_FACTORY_BUILD_CONFIG)
+$(TARGET_KERNEL_CONFIG): $(KERNEL_MAKE_DEPENDENCIES)
 	$(hide) mkdir -p $(dir $@)
 	$(PREBUILT_MAKE_PREFIX)$(MAKE) -C $(PRIVATE_DIR) $(KERNEL_MAKE_OPTION) $(KERNEL_DEFCONFIG)
 
@@ -44,16 +33,13 @@ $(KERNEL_ZIMAGE_OUT): $(TARGET_KERNEL_CONFIG) $(KERNEL_MAKE_DEPENDENCIES)
 	$(hide) mkdir -p $(dir $@)
 	$(PREBUILT_MAKE_PREFIX)$(MAKE) -C $(PRIVATE_DIR) $(KERNEL_MAKE_OPTION)
 	$(hide) $(call fixup-kernel-cmd-file,$(KERNEL_OUT)/arch/$(KERNEL_TARGET_ARCH)/boot/compressed/.piggy.xzkern.cmd)
+ifdef PROJECT_DTB_NAMES
 	# check the kernel image size
 	python device/mediatek/build/build/tools/check_kernel_size.py $(KERNEL_OUT) $(KERNEL_DIR) $(PROJECT_DTB_NAMES)
+endif
 
-ifeq ($(strip $(MTK_HEADER_SUPPORT)), yes)
-$(BUILT_KERNEL_TARGET): $(KERNEL_ZIMAGE_OUT) $(TARGET_KERNEL_CONFIG) $(LOCAL_PATH)/Android.mk | $(HOST_OUT_EXECUTABLES)/mkimage$(HOST_EXECUTABLE_SUFFIX)
-	$(hide) $(HOST_OUT_EXECUTABLES)/mkimage$(HOST_EXECUTABLE_SUFFIX) $< KERNEL 0xffffffff > $@
-else
 $(BUILT_KERNEL_TARGET): $(KERNEL_ZIMAGE_OUT) $(TARGET_KERNEL_CONFIG) $(LOCAL_PATH)/Android.mk | $(ACP)
 	$(copy-file-to-target)
-endif
 
 $(TARGET_PREBUILT_KERNEL): $(BUILT_KERNEL_TARGET) $(LOCAL_PATH)/Android.mk | $(ACP)
 	$(copy-file-to-new-target)

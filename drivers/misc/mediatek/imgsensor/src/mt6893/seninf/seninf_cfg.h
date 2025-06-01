@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,6 +14,7 @@
 #ifndef __SENINF_CFG_H__
 #define __SENINF_CFG_H__
 
+#define _CAM_MUX_SWITCH
 #define SENINF_MAX_NUM 8
 
 #define SENINF_MAP_BASE_REG  0x1A004000

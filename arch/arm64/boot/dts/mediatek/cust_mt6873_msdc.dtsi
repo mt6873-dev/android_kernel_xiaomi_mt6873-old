@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Shi.Ma <shi.ma@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -71,7 +70,7 @@
 
 	host_function = /bits/ 8 <MSDC_SD>;
 
-	cd_level = /bits/ 8 <MSDC_CD_HIGH>;
+	cd_level = /bits/ 8 <MSDC_CD_LOW>;
 	cd-gpios = <&pio 23 0>;
 
 	status = "okay";

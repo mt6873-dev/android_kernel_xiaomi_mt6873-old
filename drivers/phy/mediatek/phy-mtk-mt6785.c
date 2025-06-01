@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -480,7 +479,7 @@ static void phy_recover(struct mtk_phy_instance *instance)
 	phy_efuse_settings(instance);
 
 	u3phywrite32(U3D_USBPHYACR6, RG_USB20_DISCTH_OFST,
-		RG_USB20_DISCTH, 0xF);
+		RG_USB20_DISCTH, 0x7);
 
 	usb_phy_tuning(instance);
 	phy_advance_settings(instance);

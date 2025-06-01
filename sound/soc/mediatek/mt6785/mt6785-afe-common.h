@@ -3,7 +3,6 @@
  * mt6785-afe-common.h  --  Mediatek 6785 audio driver definitions
  *
  * Copyright (c) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Eason Yen <eason.yen@mediatek.com>
  */
 

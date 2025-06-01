@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -28,7 +27,6 @@ enum sensorlist {
 	baro,
 	sar,
 	ois,
-	lux_b,
 	maxhandle,
 };
 
@@ -60,9 +58,6 @@ int sensorlist_sensor_to_handle(int sensor)
 		break;
 	case SENSOR_TYPE_OIS:
 		handle = ois;
-		break;
-	case SENSOR_TYPE_LUX_B:
-		handle = lux_b;
 		break;
 	}
 	return handle;
@@ -96,9 +91,6 @@ int sensorlist_handle_to_sensor(int handle)
 		break;
 	case ois:
 		type = SENSOR_TYPE_OIS;
-		break;
-	case lux_b:
-		type = SENSOR_TYPE_LUX_B;
 		break;
 	}
 	return type;

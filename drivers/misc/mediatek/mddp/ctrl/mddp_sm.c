@@ -54,18 +54,35 @@ static void _mddp_set_state(struct mddp_app_t *app, enum mddp_state_e new_state)
 	MDDP_SM_UNLOCK(app->locker);
 }
 
-static int32_t _mddp_sm_drv_notify(
-	enum mddp_app_type_e app_type,
-	enum mddp_drv_notify_type_e notify_type)
+void mddp_check_feature(void)
 {
-	struct mddp_app_t              *app;
+	struct mddp_md_msg_t           *md_msg;
+	struct mddp_app_t *app;
 
-	app = mddp_get_app_inst(app_type);
+	md_msg = kzalloc(sizeof(struct mddp_md_msg_t), GFP_ATOMIC);
+	if (unlikely(!md_msg)) {
+		MDDP_F_LOG(MDDP_LL_NOTICE,
+			"%s: failed to alloc md_msg bug!\n", __func__);
+		WARN_ON(1);
+		return;
+	}
 
-	if (notify_type == MDDP_DRV_NOTIFY_DISABLE)
-		mddp_sm_on_event(app, MDDP_EVT_DRV_DISABLE);
+	md_msg->msg_id = IPC_MSG_ID_MDFPM_CHECK_FEATURE_REQ;
+	md_msg->data_len = 0;
 
-	return 0;
+	app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
+	app->abnormal_flags |= MDDP_ABNORMAL_CHECK_FEATURE_ABSENT;
+
+	mddp_ipc_send_md(app, md_msg, MDFPM_USER_ID_MDFPM);
+}
+
+static void mddp_handshake_done(uint32_t feature)
+{
+	struct mddp_app_t *app;
+
+	app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
+	atomic_set(&app->feature, feature);
+	app->abnormal_flags &= ~MDDP_ABNORMAL_CHECK_FEATURE_ABSENT;
 }
 
 static int32_t mddp_sm_ctrl_msg_hdlr(
@@ -76,7 +93,6 @@ static int32_t mddp_sm_ctrl_msg_hdlr(
 	int32_t                 ret = 0;
 
 	switch (msg_id) {
-#ifdef CONFIG_MTK_MDDP_WH_SUPPORT
 	case IPC_MSG_ID_MDFPM_SUSPEND_TAG_IND:
 		MDDP_S_LOG(MDDP_LL_NOTICE,
 				"%s: MDDP suspend indication.\n", __func__);
@@ -88,8 +104,9 @@ static int32_t mddp_sm_ctrl_msg_hdlr(
 				"%s: MDDP resume indication.\n", __func__);
 		ret = mddp_f_resume_tag();
 		break;
-#endif
-
+	case IPC_MSG_ID_MDFPM_CHECK_FEATURE_RSP:
+		mddp_handshake_done(*(uint32_t *)buf);
+		break;
 	default:
 		MDDP_S_LOG(MDDP_LL_ERR,
 				"%s: Unaccepted msg_id(%d)!\n",
@@ -121,6 +138,7 @@ int32_t mddp_sm_init(void)
 		_mddp_set_state(app, MDDP_STATE_UNINIT);
 
 		mddp_sm_init_func_list_s[idx](app);
+		atomic_set(&app->feature, 0);
 	}
 
 	return 0;
@@ -158,35 +176,6 @@ struct mddp_app_t *mddp_get_app_inst(enum mddp_app_type_e type)
 static enum mddp_state_e mddp_get_state(struct mddp_app_t *app)
 {
 	return app->state;
-}
-
-bool mddp_is_acted_state(enum mddp_app_type_e type)
-{
-	struct mddp_app_t              *app;
-	uint32_t                        tmp_type;
-	uint32_t                        idx;
-	bool                            ret = false;
-
-	if (type == MDDP_APP_TYPE_ALL) {
-		/* OK. Check all app state. */
-		for (idx = 0; idx < MDDP_MOD_CNT; idx++) {
-			tmp_type = mddp_sm_module_list_s[idx];
-			app = mddp_get_app_inst(tmp_type);
-
-			if (app->state == MDDP_STATE_ACTIVATED)
-				return true;
-		}
-	} else if (type < 0 || type > MDDP_APP_TYPE_ALL) {
-		/* NG! */
-		MDDP_S_LOG(MDDP_LL_ERR,
-				"%s: Invalid app_type(%d)!\n", __func__, type);
-	} else {
-		/* OK. Check single app state. */
-		app = mddp_get_app_inst(type);
-		ret = (app->state == MDDP_STATE_ACTIVATED) ? true : false;
-	}
-
-	return ret;
 }
 
 enum mddp_state_e mddp_sm_set_state_by_md_rsp(struct mddp_app_t *app,
@@ -318,7 +307,6 @@ int32_t mddp_sm_msg_hdlr(
 		ret = mddp_sm_ctrl_msg_hdlr(msg_id, buf, buf_len);
 		goto _done;
 
-#ifdef CONFIG_MTK_MDDP_WH_SUPPORT
 	case MDFPM_USER_ID_WFPM:
 		app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
 		break;
@@ -329,7 +317,6 @@ int32_t mddp_sm_msg_hdlr(
 			ret = mddp_u_msg_hdlr(msg_id, buf, buf_len);
 
 		goto _done;
-#endif
 
 	default:
 		/*
@@ -373,11 +360,11 @@ int32_t mddp_sm_reg_callback(
 	 * OK. This app_type is configured.
 	 */
 	if (app->is_config && app->reg_drv_callback) {
-		handle->drv_notify = _mddp_sm_drv_notify;
 		app->reg_drv_callback(handle);
 		memcpy(&app->drv_hdlr,
 			handle, sizeof(struct mddp_drv_handle_t));
-		mddp_sm_on_event(app, MDDP_EVT_DRV_REGHDLR);
+		app->drv_reg = 1;
+		app->abnormal_flags &= ~MDDP_ABNORMAL_WIFI_DRV_GET_FEATURE_BEFORE_MD_READY;
 		return 0;
 	}
 
@@ -402,11 +389,10 @@ void mddp_sm_dereg_callback(
 	 * OK. This app_type is configured.
 	 */
 	if (app->is_config && app->dereg_drv_callback) {
-		handle->drv_notify = NULL;
 		app->dereg_drv_callback(handle);
-		memcpy(&app->drv_hdlr,
-			handle, sizeof(struct mddp_drv_handle_t));
-		mddp_sm_on_event(app, MDDP_EVT_DRV_DEREGHDLR);
+		memset(&app->drv_hdlr,
+			0, sizeof(struct mddp_drv_handle_t));
+		app->drv_reg = 0;
 		return;
 	}
 

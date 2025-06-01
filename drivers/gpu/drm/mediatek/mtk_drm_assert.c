@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -437,7 +436,9 @@ int DAL_Printf(const char *fmt, ...)
 	if (drm_dal_enable == 0)
 		drm_dal_enable = 1;
 
+#ifdef CONFIG_MTK_DISPLAY_CMDQ
 	drm_show_dal(dal_crtc, true);
+#endif
 
 	DAL_UNLOCK();
 

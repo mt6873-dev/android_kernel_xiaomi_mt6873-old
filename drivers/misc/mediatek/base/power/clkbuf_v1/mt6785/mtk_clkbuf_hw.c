@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -27,6 +26,7 @@
 #include <mt-plat/mtk_boot.h>
 //#include <mt-plat/upmu_common.h>
 #include <linux/string.h>
+#include <linux/delay.h>
 
 static void __iomem *pwrap_base;
 
@@ -92,11 +92,6 @@ static void __iomem *pwrap_base;
 #define CO_BUF_M				3
 
 #define CLKBUF_STATUS_INFO_SIZE 2048
-
-static void __iomem *gpio_base;
-#define ADR_GPIO_MODE_OF_NFC_CLK	(gpio_base + 0x330)
-#define BIT_GPIO_MODE_OF_NFC_CLK	4
-#define MSK_GPIO_MODE_OF_NFC_CLK	0x7
 
 static unsigned int xo2_mode_set[4] = {WCN_EN_M,
 			WCN_EN_BB_G,
@@ -205,14 +200,16 @@ unsigned int __attribute__((weak))
 
 static void pmic_clk_buf_ctrl_ext(short on)
 {
-	if (on)
+	if (on) {
 		pmic_config_interface(PMIC_DCXO_CW09_SET_ADDR, 0x1,
 				      PMIC_XO_EXTBUF7_EN_M_MASK,
 				      PMIC_XO_EXTBUF7_EN_M_SHIFT);
-	else
+		udelay(400);
+	} else {
 		pmic_config_interface(PMIC_DCXO_CW09_CLR_ADDR, 0x1,
 				      PMIC_XO_EXTBUF7_EN_M_MASK,
 				      PMIC_XO_EXTBUF7_EN_M_SHIFT);
+	}
 }
 
 void clk_buf_ctrl_bblpm_hw(short on)
@@ -1421,21 +1418,6 @@ int clk_buf_dts_map(void)
 		return -1;
 	}
 
-        /* get GPIO base address */
-	node = of_find_compatible_node(NULL, NULL, "mediatek,gpio");
-	if (node) {
-		gpio_base = of_iomap(node, 0);
-		if (!gpio_base) {
-			pr_err("error: iomap fail for GPIO\n");
-			WARN_ON(1);
-			return -1;
-		}
-	} else {
-		pr_err("error: can't find GPIO node\n");
-		WARN_ON(1);
-		return -1;
-	}
-
 	return 0;
 }
 #else /* !CONFIG_OF */
@@ -1496,24 +1478,6 @@ short is_clkbuf_bringup(void)
 #endif
 }
 
-#ifndef CONFIG_NFC_CHIP_SUPPORT
-unsigned int is_nfc_support(void)
-{
-	unsigned int gpio_mode = 0;
-
-	/* check if GPIO is configured correctly for SCP VREQ */
-	gpio_mode = (clkbuf_readl(ADR_GPIO_MODE_OF_NFC_CLK) >>
-				 BIT_GPIO_MODE_OF_NFC_CLK) &
-				 MSK_GPIO_MODE_OF_NFC_CLK;
-	if (gpio_mode == 1)
-		pr_err("nfc_clk muxpin set to srclkeno0\n");
-	else
-		pr_err("nfc_clk muxpin setting - %d\n", gpio_mode);
-
-	return gpio_mode;
-}
-#endif
-
 void clk_buf_post_init(void)
 {
 #if defined(CONFIG_MTK_UFS_SUPPORT)
@@ -1532,11 +1496,8 @@ void clk_buf_post_init(void)
 
 #ifndef CONFIG_NFC_CHIP_SUPPORT
 	/* no need to use XO_NFC if no NFC */
-	if (!is_nfc_support()) {
-		/* no need to use XO_NFC if no NFC */
-		clk_buf_ctrl_internal(CLK_BUF_NFC, CLK_BUF_FORCE_OFF);
-		CLK_BUF3_STATUS = CLOCK_BUFFER_DISABLE;
-	}
+	clk_buf_ctrl_internal(CLK_BUF_NFC, CLK_BUF_FORCE_OFF);
+	CLK_BUF3_STATUS = CLOCK_BUFFER_DISABLE;
 #endif
 #ifdef CLKBUF_USE_BBLPM
 	if (bblpm_switch == 2) {

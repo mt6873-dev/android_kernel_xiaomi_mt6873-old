@@ -596,8 +596,7 @@ config BATTERY_GOLDFISH
 
 config BATTERY_RT5033
 	tristate "RT5033 fuel gauge support"
-	depends on I2C
-	select REGMAP_I2C
+	depends on MFD_RT5033
 	help
 	  This adds support for battery fuel gauge in Richtek RT5033 PMIC.
 	  The fuelgauge calculates and determines the battery state of charge
@@ -619,42 +618,7 @@ config CUSTOM_BATTERY_EXTERNAL_CHANNEL
 	  Say Y to enable support for Customer external gauge.
 	  if unsure ,choose n.
 
-config MTK_CHARGER_BOMB
-	bool "MTK charger for BOMB"
-	help
-	  Say yes In MTK charger bomb. J7A/J7B
-
-config MTK_CHARGER_CEZANNE
-	bool "MTK charger for CEZANNE"
-	help
-	  Say yes In MTK charger cezanne. J10
-
-config MTK_CHARGER_CANNON
-	bool "MTK charger for CANNON"
-	help
-	  Say yes In MTK charger cannon. J22
-
-
-config MTK_CHARGER_BEGONIA
-	bool "MTK charger for BEGONIA"
-	help
-	  Say yes In MTK charger begonia. G7
-
 source "drivers/power/supply/mediatek/battery/Kconfig"
-source "drivers/power/supply/mediatek/battery_bomb/Kconfig"
-source "drivers/power/supply/mediatek/battery_cezanne/Kconfig"
-source "drivers/power/supply/mediatek/battery_cannon/Kconfig"
-#source "drivers/power/supply/mediatek/battery_begonia/Kconfig"
-
 source "drivers/power/supply/mediatek/charger/Kconfig"
-source "drivers/power/supply/mediatek/charger_bomb/Kconfig"
-source "drivers/power/supply/mediatek/charger_cezanne/Kconfig"
-source "drivers/power/supply/mediatek/charger_cannon/Kconfig"
-#source "drivers/power/supply/mediatek/charger_begonia/Kconfig"
-
-source "drivers/power/supply/ti_bomb/Kconfig"
-source "drivers/power/supply/ti_cezanne/Kconfig"
-
-source "drivers/power/supply/maxim/Kconfig"
 
 endif # POWER_SUPPLY

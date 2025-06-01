@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -30,6 +29,12 @@
 #elif defined(CONFIG_MACH_MT6833)
 #include  "helio-dvfsrc-opp-mt6833.h"
 #include "dt-bindings/memory/mt6833-larb-port.h"
+#elif defined(CONFIG_MACH_MT6877)
+//#include  "helio-dvfsrc-opp-mt6877.h"
+#include "dt-bindings/memory/mt6877-larb-port.h"
+#elif defined(CONFIG_MACH_MT6781)
+//#include  "helio-dvfsrc-opp-mt6781.h"
+#include "dt-bindings/memory/mt6781-larb-port.h"
 #endif
 #include <linux/pm_qos.h>
 
@@ -48,7 +53,6 @@ struct mtk_drm_crtc;
 
 struct mtk_drm_qos_ctx {
 	unsigned int last_hrt_req;
-	unsigned int cur_hrt_req;
 	atomic_t last_hrt_idx;
 	atomic_t hrt_cond_sig;
 	wait_queue_head_t hrt_cond_wq;

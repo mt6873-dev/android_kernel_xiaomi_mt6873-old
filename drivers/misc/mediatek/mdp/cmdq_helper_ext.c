@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -43,6 +42,10 @@
 #include <cmdq-sec.h>
 #endif
 
+#if defined(CONFIG_MACH_MT6853)
+#include <soc/mediatek/smi.h>
+#endif
+
 #define CMDQ_GET_COOKIE_CNT(thread) \
 	(CMDQ_REG_GET32(CMDQ_THR_EXEC_CNT(thread)) & CMDQ_MAX_COOKIE_VALUE)
 
@@ -66,6 +69,10 @@ static DEFINE_MUTEX(cmdq_inst_check_mutex);
 
 static DEFINE_SPINLOCK(cmdq_write_addr_lock);
 static DEFINE_SPINLOCK(cmdq_record_lock);
+
+/* wake lock to prevnet system off */
+static struct wakeup_source mdp_wake_lock;
+static bool mdp_wake_locked;
 
 static struct dma_pool *mdp_rb_pool;
 static atomic_t mdp_rb_pool_cnt;
@@ -1770,20 +1777,6 @@ int cmdqCoreAllocWriteAddress(u32 count, dma_addr_t *paStart,
 			break;
 		}
 
-		/* clear buffer content */
-		do {
-			u32 *pInt = (u32 *) pWriteAddr->va;
-			int i = 0;
-
-			for (i = 0; i < count; ++i) {
-				*(pInt + i) = 0xcdcdabab;
-				/* make sure instructions are really in DRAM */
-				mb();
-				/* make sure instructions are really in DRAM */
-				smp_mb();
-			}
-		} while (0);
-
 		/* assign output pa */
 		*paStart = pWriteAddr->pa;
 
@@ -2331,7 +2324,6 @@ ssize_t cmdq_core_print_profile_enable(struct device *dev,
 ssize_t cmdq_core_write_profile_enable(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
-	int len = 0;
 	int value = 0;
 	int status = 0;
 
@@ -2343,16 +2335,15 @@ ssize_t cmdq_core_write_profile_enable(struct device *dev,
 			break;
 		}
 
-		len = size;
-		memcpy(textBuf, buf, len);
+		memcpy(textBuf, buf, size);
 
-		textBuf[len] = '\0';
+		textBuf[size] = '\0';
 		if (kstrtoint(textBuf, 10, &value) < 0) {
 			status = -EFAULT;
 			break;
 		}
 
-		status = len;
+		status = size;
 		if (value < 0 || value > CMDQ_PROFILE_MAX)
 			value = 0;
 
@@ -3348,11 +3339,44 @@ static void cmdq_core_group_clk_cb(bool enable,
 				cmdq_core_group_clk_off(index, engine_clk);
 		}
 	}
+
+#if defined(CONFIG_MACH_MT6853)
+	if ((engine_flag & CMDQ_ENG_MDP_GROUP_BITS) && enable)
+		smi_larb_port_check();
+#endif
+
 }
 
 bool cmdq_thread_in_use(void)
 {
 	return (bool)(atomic_read(&cmdq_thread_usage) > 0);
+}
+
+static void mdp_lock_wake_lock(bool lock)
+{
+	CMDQ_SYSTRACE_BEGIN("%s_%s\n", __func__, lock ? "lock" : "unlock");
+
+	if (lock) {
+		if (!mdp_wake_locked) {
+			__pm_stay_awake(&mdp_wake_lock);
+			mdp_wake_locked = true;
+		} else  {
+			/* should not reach here */
+			CMDQ_ERR("try lock twice\n");
+			dump_stack();
+		}
+	} else {
+		if (mdp_wake_locked) {
+			__pm_relax(&mdp_wake_lock);
+			mdp_wake_locked = false;
+		} else {
+			/* should not reach here */
+			CMDQ_ERR("try unlock twice\n");
+			dump_stack();
+		}
+	}
+
+	CMDQ_SYSTRACE_END();
 }
 
 static void cmdq_core_clk_enable(struct cmdqRecStruct *handle)
@@ -3364,12 +3388,8 @@ static void cmdq_core_clk_enable(struct cmdqRecStruct *handle)
 	CMDQ_MSG("[CLOCK]enable usage:%d scenario:%d\n",
 		clock_count, handle->scenario);
 
-	if (clock_count == 1) {
-		cmdq_core_reset_gce();
-		if (!handle->secData.is_secure)
-			cmdq_mbox_enable(((struct cmdq_client *)
-				handle->pkt->cl)->chan);
-	}
+	if (clock_count == 1)
+		mdp_lock_wake_lock(true);
 
 	cmdq_core_group_clk_cb(true, handle->engineFlag, handle->engine_clk);
 }
@@ -3384,20 +3404,13 @@ static void cmdq_core_clk_disable(struct cmdqRecStruct *handle)
 
 	CMDQ_MSG("[CLOCK]disable usage:%d\n", clock_count);
 
-	if (clock_count == 0) {
-		if (!handle->secData.is_secure)
-			cmdq_mbox_disable(((struct cmdq_client *)
-				handle->pkt->cl)->chan);
-		/* Backup event */
-		cmdq_get_func()->eventBackup();
-		/* clock-off */
-		cmdq_get_func()->enableGCEClockLocked(false);
-	} else if (clock_count < 0) {
+	if (clock_count == 0)
+		mdp_lock_wake_lock(false);
+	else if (clock_count < 0)
 		CMDQ_ERR(
 			"enable clock %s error usage:%d smi use:%d\n",
 			__func__, clock_count,
 			(s32)atomic_read(&cmdq_thread_usage));
-	}
 }
 
 s32 cmdq_core_suspend_hw_thread(s32 thread)
@@ -4491,7 +4504,13 @@ s32 cmdq_pkt_wait_flush_ex_result(struct cmdqRecStruct *handle)
 				u32 cost = va[1] < va[0] ?
 					~va[0] + va[1] : va[1] - va[0];
 
+#if BITS_PER_LONG == 64
 				do_div(cost, 26);
+#elif BITS_PER_LONG == 32
+				cost /= 26;
+#else
+		#error "unsigned long division is not supported for this architecture"
+#endif
 				if (cost > 80000) {
 					CMDQ_LOG(
 						"[WARN]task executes %uus engine:%#llx caller:%llu-%s\n",
@@ -4675,8 +4694,8 @@ static s32 cmdq_pkt_flush_async_ex_impl(struct cmdqRecStruct *handle,
 	mutex_unlock(&ctx->thread[(u32)thread].thread_mutex);
 
 	if (err < 0) {
-		CMDQ_ERR("pkt flush failed err:%d pkt:0x%p thread:%d\n",
-			err, handle->pkt, thread);
+		CMDQ_ERR("pkt flush failed err:%d handle:0x%p thread:%d\n",
+			err, handle, thread);
 		return err;
 	}
 
@@ -4722,7 +4741,6 @@ s32 cmdq_pkt_flush_async_ex(struct cmdqRecStruct *handle,
 		if (thread == CMDQ_INVALID_THREAD || err == -EBUSY)
 			return err;
 		/* client may already wait for flush done, trigger as error */
-		handle->state = TASK_STATE_ERROR;
 		wake_up(&cmdq_wait_queue[(u32)thread]);
 		return err;
 	}
@@ -4819,9 +4837,12 @@ void cmdq_core_dump_active(void)
 			break;
 
 		CMDQ_LOG(
-			"[warn] waiting task %u cost time:%lluus submit:%llu enging:%#llx caller:%llu-%s\n",
+			"[warn] waiting task %u cost time:%lluus submit:%llu enging:%#llx thd:%d caller:%llu-%s sec:%s handle:%p\n",
 			idx, cost, task->submit, task->engineFlag,
-			(u64)task->caller_pid, task->caller_name);
+			task->thread,
+			(u64)task->caller_pid, task->caller_name,
+			task->secData.is_secure ? "true" : "false",
+			task);
 		idx++;
 	}
 	mutex_unlock(&cmdq_handle_list_mutex);
@@ -4834,9 +4855,16 @@ s32 cmdq_helper_mbox_register(struct device *dev)
 	u32 i;
 	s32 chan_id;
 	struct cmdq_client *clt;
+	int thread_cnt;
+
+	thread_cnt = of_count_phandle_with_args(
+		dev->of_node, "mboxes", "#mbox-cells");
+	CMDQ_LOG("thread count:%d\n", thread_cnt);
+	if (thread_cnt <= 0)
+		thread_cnt = CMDQ_MAX_THREAD_COUNT;
 
 	/* for display we start from thread 0 */
-	for (i = 0; i < CMDQ_MAX_THREAD_COUNT; i++) {
+	for (i = 0; i < thread_cnt; i++) {
 		clt = cmdq_mbox_create(dev, i);
 		if (!clt || IS_ERR(clt)) {
 			CMDQ_MSG("register mbox stop:0x%p idx:%u\n", clt, i);
@@ -4980,6 +5008,8 @@ void cmdq_core_initialize(void)
 	mdp_rb_pool = dma_pool_create("mdp_rb", cmdq_dev_get(),
 		CMDQ_BUF_ALLOC_SIZE, 0, 0);
 	atomic_set(&mdp_rb_pool_cnt, 0);
+
+	wakeup_source_add(&mdp_wake_lock);
 }
 
 #ifdef CMDQ_DAPC_DEBUG

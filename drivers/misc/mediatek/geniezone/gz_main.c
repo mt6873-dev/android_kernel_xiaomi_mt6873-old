@@ -147,16 +147,32 @@ static ssize_t gz_test_store(struct device *dev,
 		th = kthread_run(chunk_memory_ut, NULL, "MCM UT");
 		break;
 	case '6':
-		KREE_DEBUG("test VReg\n");
-		th = kthread_run(vreg_test, NULL, "VReg test");
+		KREE_DEBUG("test RKP Basic UT by smc\n");
+		th = kthread_run(test_rkp_basic_by_smc, NULL, "RKP_UT");
+		break;
+	case '7':
+		KREE_DEBUG("stress test RKP UT by vreg\n");
+		th = kthread_run(test_rkp_stress_by_smc, NULL, "RKP_ST");
+		break;
+	case '8':
+		KREE_DEBUG("test RKP by malloc buffer/UPT/RD/WR.\n");
+		th = kthread_run(test_rkp_mix_op, NULL, "RKP_MIX_OP");
 		break;
 	case '9':
-		KREE_DEBUG("test RKP_GZKM\n");
-		th = kthread_run(test_rkp_gzkernel_memory, NULL, "RKP_GZKM");
+		KREE_DEBUG("test RKP: malloc buffer w/ 2 threads\n");
+		th = kthread_run(test_rkp_by_malloc_buf, NULL, "RKP_multi_smc");
 		break;
 	case 'a':
-		KREE_DEBUG("test RKP\n");
-		th = kthread_run(test_rkp, NULL, "RKP_LinuxKM");
+		KREE_DEBUG("test RKP by GZ driver\n");
+		th = kthread_run(test_rkp_by_gz_driver, NULL, "RKP_gz_drv");
+		break;
+	case 'b':
+		KREE_DEBUG("test RKP Basic UT by vreg\n");
+		th = kthread_run(test_rkp_basic_by_vreg, NULL, "RKP_UT");
+		break;
+	case 'c':
+		KREE_DEBUG("stress test RKP UT by vreg\n");
+		th = kthread_run(test_rkp_stress_by_vreg, NULL, "RKP_STRESS");
 		break;
 	case 'C':
 		KREE_DEBUG("test GZ Secure Storage\n");
@@ -873,8 +889,8 @@ static long tz_client_tee_service(struct file *file, unsigned long arg,
 		}
 	}
 
-	ret = KREE_TeeServiceCall(handle, cparam.command, cparam.paramTypes,
-			param);
+	ret = KREE_TeeServiceCallPlus(handle, cparam.command, cparam.paramTypes,
+				      param, cparam.cpumask);
 
 	cparam.ret = ret;
 	tmpTypes = cparam.paramTypes;
@@ -1248,6 +1264,8 @@ TZ_RESULT gz_manual_adjust_trusty_wq_attr(char __user *user_req)
 		manual_task_attr.mask[TRUSTY_TASK_CHK_ID],
 		manual_task_attr.pri[TRUSTY_TASK_CHK_ID]);
 
+	tipc_set_default_cpumask(manual_task_attr.mask[TRUSTY_TASK_KICK_ID]);
+
 	return gz_adjust_task_attr(&manual_task_attr);
 }
 
@@ -1438,6 +1456,7 @@ static struct devapc_vio_callbacks gz_devapc_vio_handle = {
 };
 #endif
 
+uint64_t va_gz_test_store;
 /************ kernel module init entry ***************/
 static int __init gz_init(void)
 {
@@ -1445,12 +1464,14 @@ static int __init gz_init(void)
 
 	tz_system_dev = NULL;
 
+	va_gz_test_store = (uint64_t) &gz_test_store;
+	//KREE_DEBUG("[gz_main.c]====> gz_test_store VA=0x%llx\n", va_gz_test_store);
+
 	res = create_files();
 	if (res) {
 		KREE_DEBUG("create sysfs failed: %d\n", res);
 	} else {
 		struct task_struct *gz_get_cpuinfo_task;
-		struct task_struct *ree_dummy_task;
 
 		gz_get_cpuinfo_task =
 		    kthread_create(gz_get_cpuinfo_thread, NULL,
@@ -1461,17 +1482,6 @@ static int __init gz_init(void)
 			res = PTR_ERR(gz_get_cpuinfo_task);
 		} else
 			wake_up_process(gz_get_cpuinfo_task);
-
-		ree_dummy_task =
-		kthread_create(ree_dummy_thread, NULL, "ree_dummy_task");
-		if (IS_ERR(ree_dummy_task)) {
-			KREE_ERR("Unable to start kernel thread %s\n",
-				__func__);
-			res = PTR_ERR(ree_dummy_task);
-		} else {
-			set_user_nice(ree_dummy_task, -20);
-			wake_up_process(ree_dummy_task);
-		}
 	}
 
 #if IS_ENABLED(CONFIG_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)

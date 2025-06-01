@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1046,12 +1045,12 @@ int disp_ccorr_set_color_matrix(void *cmdq, int32_t matrix[16],
 
 	if (((hint == 0) || ((hint == 1) && identity_matrix)) && (!fte_flag)) {
 		if (bypass_color == true) {
-			mtk_color_setbypass(DISP_MODULE_COLOR0, false);
+			mtk_color_setbypass(DISP_MODULE_COLOR0, false, cmdq);
 			bypass_color = false;
 		}
 	} else {
 		if (bypass_color == false) {
-			mtk_color_setbypass(DISP_MODULE_COLOR0, true);
+			mtk_color_setbypass(DISP_MODULE_COLOR0, true, cmdq);
 			bypass_color = true;
 		}
 	}

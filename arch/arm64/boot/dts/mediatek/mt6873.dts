@@ -2,7 +2,6 @@
  * Mediatek's MT6873 SoC device tree source
  *
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -227,6 +226,16 @@ page_owner=on loop.max_part=7";
 		};
 	};
 
+	disp_leds {
+		compatible = "mediatek,disp-leds";
+
+		backlight {
+			label = "lcd-backlight";
+			max-brightness = <255>;
+			led-bits = <8>;
+			default-state = "on";
+		};
+	};
 
 	psci {
 		compatible = "arm,psci-1.0";
@@ -244,27 +253,17 @@ page_owner=on loop.max_part=7";
 		};
 	};
 
-	disp_leds {
-		compatible = "mediatek,disp-leds";
-
-		backlight {
-			label = "lcd-backlight";
-			max-brightness = <2047>;
-			led-bits = <11>;
-			trans-bits = <11>;
-			default-state = "user";
-			default-level = <500>;
-		};
-	};
-
-
 	mtk_lpm: mtk_lpm {
 		compatible = "mediatek,mtk-lpm";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
 		suspend-method = "s2idle";
-		irq-remain = <&edge_keypad &edge_mdwdt>;
+		irq-remain = <&edge_keypad &edge_mdwdt>,
+			     <&level_vpu_core0 &level_vpu_core1>,
+			     <&level_mali0 &level_mali1>,
+			     <&level_mali2 &level_mali3 &level_mali4>,
+			     <&level_mtk_mdla &level_edma0>;
 		resource-ctrl = <&bus26m &infra &syspll>,
 				<&dram_s0 &dram_s1>;
 		constraints = <&rc_bus26m &rc_syspll &rc_dram>;
@@ -282,6 +281,42 @@ page_owner=on loop.max_part=7";
 			edge_mdwdt: edge_mdwdt {
 				target = <&mddriver>;
 				value = <1 0 0 0x02000000>;
+			};
+			level_vpu_core0: level_vpu_core0 {
+				target = <&vpu_core0>;
+				value = <0 0 0 0>;
+			};
+			level_vpu_core1: level_vpu_core1 {
+				target = <&vpu_core1>;
+				value = <0 0 0 0>;
+			};
+			level_mali0: level_mali0 {
+				target = <&mali>;
+				value = <0 0 0 0>;
+			};
+			level_mali1: level_mali1 {
+				target = <&mali>;
+				value = <0 1 0 0>;
+			};
+			level_mali2: level_mali2 {
+				target = <&mali>;
+				value = <0 2 0 0>;
+			};
+			level_mali3: level_mali3 {
+				target = <&mali>;
+				value = <0 3 0 0>;
+			};
+			level_mali4: level_mali4 {
+				target = <&mali>;
+				value = <0 4 0 0>;
+			};
+			level_mtk_mdla: level_mtk_mdla {
+				target = <&mtk_mdla>;
+				value = <0 0 0 0>;
+			};
+			level_edma0: level_edma0 {
+				target = <&edma0>;
+				value = <0 0 0 0>;
 			};
 		};
 		resource-ctrl-list {
@@ -360,9 +395,17 @@ page_owner=on loop.max_part=7";
 		#size-cells = <2>;
 		ranges;
 
+		reserve-memory-ssmr {
+			compatible = "mediatek,reserve-memory-ssmr";
+			no-map;
+			size = <0 0x1000>;
+			alignment = <0 0x1000>;
+			alloc-ranges = <0 0xc0000000 4 0x00000000>;
+		};
+
 		zmc-default {
 			compatible = "mediatek,zone_movable_cma";
-			size = <0 0x2d000000>;
+			size = <0 0x35000000>;
 			alignment = <0 0x1000000>;
 			alloc-ranges = <0 0xc0000000 4 0x00000000>;
 		};
@@ -378,22 +421,6 @@ page_owner=on loop.max_part=7";
 			alignment = <0 0x1000>;
 			alloc-ranges = <0 0x40000000 0 0x80000000>;
 		};
-
-#ifdef CONFIG_MICROTRUST_TEE_SUPPORT
-		soter-shared-mem {
-			compatible = "microtrust,shared_mem";
-			no-map;
-#if defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT) || \
-	defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
-			size = <0 0xC00000>;
-			alignment = <0 0x1000000>;
-#else
-			size = <0 0x600000>;
-			alignment = <0 0x200000>;
-#endif
-			alloc-ranges = <0 0x40000000 0 0x50000000>;
-		};
-#endif
 
 		reserve-memory-sspm_share {
 			compatible = "mediatek,reserve-memory-sspm_share";
@@ -761,15 +788,82 @@ page_owner=on loop.max_part=7";
 		interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
-	fhctl@1000ce00 {
-		compatible = "mediatek,fhctl";
-		reg = <0 0x1000ce00 0 0x200>;
+	fhctl-new@1000ce00 {
+			compatible = "mediatek,mt6873-fhctl";
+			reg = <0 0x1000ce00 0 0x200>,
+				  <0 0x1000c000 0 0xe00>;
+			map0 {
+				domain = "top";
+				method = "fhctl-mcupm";
+				armpll_ll {
+					fh-id = <0>;
+					pll-id = <0>;
+					perms = <0x18>;
+				};
+				armpll_bl0 {
+					fh-id = <1>;
+					pll-id = <1>;
+					perms = <0x18>;
+				};
+				armpll_bl1 {
+					fh-id = <2>;
+					pll-id = <2>;
+					perms = <0x18>;
+				};
+				armpll_bl2 {
+					fh-id = <3>;
+					pll-id = <3>;
+					perms = <0x18>;
+				};
+				npupll {
+					fh-id = <4>;
+					pll-id = <4>;
+				};
+				ccipll {
+					fh-id = <5>;
+					pll-id = <5>;
+					perms = <0x18>;
+				};
+				mfgpll {
+					fh-id = <6>;
+					pll-id = <6>;
+				};
+				mpll {
+					fh-id = <8>;
+					pll-id = <8>;
+				};
+				mmpll {
+					fh-id = <9>;
+					pll-id = <9>;
+				};
+				mainpll {
+					fh-id = <10>;
+					pll-id = <10>;
+				};
+				msdcpll {
+					fh-id = <11>;
+					pll-id = <11>;
+				};
+				adsppll {
+					fh-id = <12>;
+					pll-id = <12>;
+				};
+				apupll {
+					fh-id = <13>;
+					pll-id = <13>;
+				};
+				tvdpll {
+					fh-id = <14>;
+					pll-id = <14>;
+				};
+			};
 	};
 
 	pwrap: pwrap@10026000 {
 		compatible = "mediatek,mt6873-pwrap";
-		reg = <0 0x10026000 0 0x1000>;
-		reg-names = "pwrap";
+		reg = <0 0x10026000 0 0x1000>,
+		<0 0x10028000 0 0x1000>;
+		reg-names = "pwrap","spi_mst";
 		interrupts = <GIC_SPI 220 IRQ_TYPE_LEVEL_HIGH>;
 	#ifdef CONFIG_FPGA_EARLY_PORTING
 		clocks = <&clk26m>, <&clk26m>, <&clk26m>, <&clk26m>;
@@ -1104,7 +1198,8 @@ page_owner=on loop.max_part=7";
 			<0 0x11020000 0 0x1000>,
 			<0 0x10030000 0 0x1000>,
 			<0 0x1020e000 0 0x1000>,
-			<0 0x10033000 0 0x1000>;
+			<0 0x10033000 0 0x1000>,
+			<0 0x0010c000 0 0x1000>;
 		interrupts = <GIC_SPI 187 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&infracfg_ao INFRACFG_AO_DEVICE_APC_CG>;
 		clock-names = "devapc-infra-clock";
@@ -1248,9 +1343,18 @@ page_owner=on loop.max_part=7";
 	};
 
 	cq_dma@10212000 {
-		compatible = "mediatek,cq_dma";
-		reg = <0 0x10212000 0 0x1000>;
-		interrupts = <GIC_SPI 154 IRQ_TYPE_LEVEL_HIGH>;
+		compatible = "mediatek,mt-cqdma-v1";
+		reg = <0 0x10212000 0 0x80>,
+			<0 0x10212100 0 0x80>,
+			<0 0x10212200 0 0x80>,
+			<0 0x10212300 0 0x80>;
+		interrupts = <GIC_SPI 154 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 155 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 156 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 157 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&infracfg_ao INFRACFG_AO_CQ_DMA_CG>;
+		clock-names = "cqdma";
+		nr_channel = <4>;
 	};
 
 	md2md_md2_ccif0@10213000 {
@@ -1569,6 +1673,8 @@ page_owner=on loop.max_part=7";
 			 <0x0870 0x00100000 20>;
 		dqopen = <0x0870 0x00200000 21>,
 			 <0x0870 0x00200000 21>;
+		ckdiv4_ca = <0x0b74 0x00000004 2>,
+			 <0x0b74 0x00000004 2>;
 	};
 
 	dramc_ch0_top0@10230000 {
@@ -1729,7 +1835,7 @@ page_owner=on loop.max_part=7";
 
 	usb_boost_manager {
 		compatible = "mediatek,usb_boost";
-		boost_period = <30>;
+		boost_period = <0>;
 	};
 
 	dramc_ch1_top0@10240000 {
@@ -2147,7 +2253,7 @@ page_owner=on loop.max_part=7";
 			<GIC_SPI 449 IRQ_TYPE_LEVEL_HIGH>;
 		mboxes = <&adsp_common 0>, /*channel 0*/
 			<&adsp_common 1>; /*channel 1*/
-		feature_control_bits = <0x303FF>;
+		feature_control_bits = <0x2303ff>;
 	};
 
 	adsp_core1: adsp_core1@10850000 {
@@ -2318,23 +2424,17 @@ page_owner=on loop.max_part=7";
 
 	tboard_thermistor2: thermal-sensor2 {
 		compatible = "mediatek,mtboard-thermistor2";
-		io-channels = <&auxadc 2>;
+		io-channels = <&auxadc 1>;
 		io-channel-names = "thermistor-ch1";
 	};
 
 	tboard_thermistor3: thermal-sensor3 {
 		compatible = "mediatek,mtboard-thermistor3";
-		io-channels = <&auxadc 1>;
+		io-channels = <&auxadc 2>;
 		io-channel-names = "thermistor-ch2";
 	};
 
-	tboard_thermistor6: thermal-sensor6 {
-		compatible = "mediatek,mtboard-thermistor6";
-		io-channels = <&auxadc 6>;
-		io-channel-names = "thermistor-ch6";
-	};
-
-	mali@13000000 {
+	mali: mali@13000000 {
 		compatible = "mediatek,mali", "arm,mali-valhall";
 		reg = <0 0x13000000 0 0x4000>;
 		interrupts =
@@ -2388,6 +2488,11 @@ page_owner=on loop.max_part=7";
 		gpufreq-supply = <&gpufreq>;
 	};
 
+	bt: bt@00000000 {
+		compatible = "mediatek,bt";
+		pm_qos_support = <1>;
+	};
+
 	btif@1100c000 {
 		compatible = "mediatek,btif";
 			/*btif base*/
@@ -2409,7 +2514,7 @@ page_owner=on loop.max_part=7";
 		clock-names = "btifc","apdmac";
 	};
 
-	wifi@18000000 {
+	wifi: wifi@18000000 {
 		compatible = "mediatek,wifi";
 		reg = <0 0x18000000 0 0x100000>;
 		interrupts = <GIC_SPI 376 IRQ_TYPE_LEVEL_HIGH>;
@@ -2526,7 +2631,6 @@ page_owner=on loop.max_part=7";
 		compatible = "mediatek,audio", "syscon";
 		reg = <0 0x11210000 0 0x2000>;
 		#clock-cells = <1>;
-		mediatek,btcvsd_snd = <&btcvsd_snd>;
 	};
 
 	afe: mt6873-afe-pcm@11210000 {
@@ -2748,22 +2852,23 @@ page_owner=on loop.max_part=7";
 	snd_audio_dsp: snd_audio_dsp {
 		compatible = "mediatek,snd_audio_dsp";
 		mtk_dsp_voip = <0x1f 0xffffffff 0xffffffff 0xffffffff 0x30000>;
-		mtk_dsp_primary = <0x0 0xffffffff 0xffffffff \
+		mtk_dsp_primary = <0x5 0xffffffff 0xffffffff \
 				   0xffffffff 0x30000>;
 		mtk_dsp_offload = <0x1d 0xffffffff 0xffffffff \
 				   0xffffffff 0x400000>;
-		mtk_dsp_deep = <0x0 0xffffffff 0xffffffff 0xffffffff 0x30000>;
+		mtk_dsp_deep = <0x5 0xffffffff 0xffffffff 0xffffffff 0x30000>;
 		mtk_dsp_playback = <0x1 0x4 0xffffffff 0x14 0x30000>;
 		mtk_dsp_music = <0x1 0xffffffff 0xffffffff 0xffffffff 0x0>;
 		mtk_dsp_capture1 = <0x1 0xffffffff 0xd 0x13 0x20000>;
 		mtk_dsp_a2dp = <0x0 0xffffffff 0xffffffff 0xffffffff 0x40000>;
 		mtk_dsp_dataprovider = <0x0 0xffffffff 0xf 0xffffffff 0x30000>;
-		mtk_dsp_call_final = <0x1 0x0 0x10 0x14 0x18000>;
-		mtk_dsp_fast = <0x0 0xffffffff 0xffffffff 0xffffffff 0x5000>;
+		mtk_dsp_call_final = <0x5 0x0 0x10 0x14 0x18000>;
+		mtk_dsp_fast = <0x5 0xffffffff 0xffffffff 0xffffffff 0x5000>;
 		mtk_dsp_ktv = <0x1 0x8 0x12 0xffffffff 0x10000>;
 		mtk_dsp_capture_raw = <0x1 0xffffffff 0xffffffff 0xffffffff 0x20000>;
+		mtk_dsp_fm = <0x1 0xffffffff 0x10 0xffffffff 0x10000>;
 		mtk_dsp_ver = <0x1>;
-		swdsp_smartpa_process_enable = <0x0>;
+		swdsp_smartpa_process_enable = <0x5>;
 		mtk_dsp_mem_afe = <0x1 0x40000>; /* always enable */
 	};
 
@@ -3488,8 +3593,11 @@ page_owner=on loop.max_part=7";
 
 	vdec@16000000 {
 		compatible = "mediatek,mt6873-vcodec-dec";
-		reg = <0 0x16000000 0 0x1000>,		/* VDEC_SYS */
+		reg = <0 0x1602f000 0 0x1000>,		/* VDEC_SYS */
+			 <0 0x16000000 0 0x1000>,		/* VDEC_BASE */
 			 <0 0x16020000 0 0x1000>,		/* VDEC_VLD */
+			 <0 0x16021000 0 0x1000>,		/* VDEC_MC */
+			 <0 0x16023000 0 0x1000>,		/* VDEC_MV */
 			 <0 0x16025000 0 0x4000>,		/* VDEC_MISC */
 			 <0 0x16010000 0 0x1000>, /* VDEC_LAT_MISC */
 			 <0 0x16011000 0 0x400>, /* VDEC_LAT_VLD */
@@ -3771,7 +3879,8 @@ page_owner=on loop.max_part=7";
 			"MTK_DRM_OPT_HBM",
 			"MTK_DRM_OPT_VDS_PATH_SWITCH",
 			"MTK_DRM_OPT_LAYER_REC",
-			"MTK_DRM_OPT_CLEAR_LAYER";
+			"MTK_DRM_OPT_CLEAR_LAYER",
+			"MTK_DRM_OPT_SF_PF";
 
 		helper-value = <0>, /*MTK_DRM_OPT_STAGE*/
 			<1>, /*MTK_DRM_OPT_USE_CMDQ*/
@@ -3787,7 +3896,7 @@ page_owner=on loop.max_part=7";
 			<0>, /*MTK_DRM_OPT_MET_LOG*/
 			<1>, /*MTK_DRM_OPT_USE_PQ*/
 			<1>, /*MTK_DRM_OPT_ESD_CHECK_RECOVERY*/
-			<0>, /*MTK_DRM_OPT_ESD_CHECK_SWITCH*/
+			<1>, /*MTK_DRM_OPT_ESD_CHECK_SWITCH*/
 			<1>, /*MTK_DRM_OPT_PRESENT_FENCE*/
 			<0>, /*MTK_DRM_OPT_RDMA_UNDERFLOW_AEE*/
 			<1>, /*MTK_DRM_OPT_DSI_UNDERRUN_AEE*/
@@ -3799,7 +3908,7 @@ page_owner=on loop.max_part=7";
 			<1>, /*MTK_DRM_OPT_RPO*/
 			<0>, /*MTK_DRM_OPT_DUAL_PIPE*/
 			<0>, /*MTK_DRM_OPT_DC_BY_HRT*/
-			<0>, /*MTK_DRM_OPT_OVL_WCG*/
+			<1>, /*MTK_DRM_OPT_OVL_WCG*/
 			<0>, /*MTK_DRM_OPT_OVL_SBCH*/
 			<1>, /*MTK_DRM_OPT_COMMIT_NO_WAIT_VBLANK*/
 			<0>, /*MTK_DRM_OPT_MET*/
@@ -3807,10 +3916,11 @@ page_owner=on loop.max_part=7";
 			<0>, /*MTK_DRM_OPT_VP_PQ*/
 			<0>, /*MTK_DRM_OPT_GAME_PQ*/
 			<0>, /*MTK_DRM_OPT_MMPATH*/
-			<1>, /*MTK_DRM_OPT_HBM*/
+			<0>, /*MTK_DRM_OPT_HBM*/
 			<0>, /*MTK_DRM_OPT_VDS_PATH_SWITCH*/
 			<0>, /*MTK_DRM_OPT_LAYER_REC*/
-			<1>; /*MTK_DRM_OPT_CLEAR_LAYER*/
+			<1>, /*MTK_DRM_OPT_CLEAR_LAYER*/
+			<1>; /*MTK_DRM_OPT_SF_PF*/
 	};
 
 	disp_pwm: disp_pwm0@1100e000 {
@@ -4945,7 +5055,7 @@ page_owner=on loop.max_part=7";
 		compatible = "mediatek,msf_b";
 		reg = <0 0x15810000 0 0x1000>;
 		interrupts = <GIC_SPI 501 IRQ_TYPE_LEVEL_HIGH>;
-		mboxes = <&gce_mbox 18 0 CMDQ_THR_PRIO_1>;
+		mboxes = <&gce_mbox 18 1200 CMDQ_THR_PRIO_1>;
 		msf_frame_done =
 		/bits/ 16 <CMDQ_EVENT_IMG2_MFB_DONE_LINK_MISC>;
 		msf_token =
@@ -5560,10 +5670,10 @@ page_owner=on loop.max_part=7";
 
 	memory_ssmr_features: memory-ssmr-features {
 		compatible = "mediatek,memory-ssmr-features";
-		svp-size = <0 0x10000000>;
+		svp-region-based-size = <0 0x18000000>;
 		2d_fr-size = <0 0>;
 		tui-size = <0 0x4000000>;
-		prot-sharedmem-size = <0 0x8000000>;
+		prot-region-based-size = <0 0x8000000>;
 		ta-elf-size = <0 0x1000000>;
 		ta-stack-heap-size = <0 0x6000000>;
 		sdsp-tee-sharedmem-size = <0 0x1000000>;
@@ -5678,12 +5788,9 @@ page_owner=on loop.max_part=7";
 			<0 0x10217080 0 0x80>;
 		interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&imp_iic_wrap_n IMP_IIC_WRAP_N_AP_I2C0_CG_RO>,
-			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>,
-			<&topckgen TOP_MUX_I2C>,
-			<&topckgen TOP_MAINPLL_D4_D8>,
-			<&topckgen TOP_UNIVPLL_D5_D4>;
-		clock-names = "main", "dma", "mux", "p_main", "p_univ";
-		clock-div = <3>;
+			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
+		clock-names = "main", "dma";
+		clock-div = <5>;
 		scl-gpio-id = <204>;
 		sda-gpio-id = <205>;
 		gpio_start = <0x11f20000>;
@@ -5703,7 +5810,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_ws IMP_IIC_WRAP_WS_AP_I2C1_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <118>;
 		sda-gpio-id = <119>;
 		gpio_start = <0x11d40000>;
@@ -5723,7 +5830,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_ws IMP_IIC_WRAP_WS_AP_I2C2_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <141>;
 		sda-gpio-id = <142>;
 		gpio_start = <0x11d40000>;
@@ -5745,7 +5852,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_e IMP_IIC_WRAP_E_AP_I2C3_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <160>;
 		sda-gpio-id = <161>;
 		gpio_start = <0x11ea0000>;
@@ -5765,7 +5872,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_ws IMP_IIC_WRAP_WS_AP_I2C4_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <139>;
 		sda-gpio-id = <140>;
 		gpio_start = <0x11d40000>;
@@ -5787,7 +5894,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_w IMP_IIC_WRAP_W_AP_I2C5_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <202>;
 		sda-gpio-id = <203>;
 		gpio_start = <0x11e20000>;
@@ -5807,7 +5914,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_n IMP_IIC_WRAP_N_AP_I2C6_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <200>;
 		sda-gpio-id = <201>;
 		gpio_start = <0x11f20000>;
@@ -5827,7 +5934,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_s IMP_IIC_WRAP_S_AP_I2C7_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <124>;
 		sda-gpio-id = <125>;
 		gpio_start = <0x11d40000>;
@@ -5836,8 +5943,6 @@ page_owner=on loop.max_part=7";
 		pu_cfg = <0xb0>;
 		rsel_cfg = <0xe0>;
 		aed = <0x1a>;
-
-		#include "mediatek/fan53870.dtsi"
 	};
 
 	i2c8: i2c8@11d01000 {
@@ -5849,7 +5954,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_s IMP_IIC_WRAP_S_AP_I2C8_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <122>;
 		sda-gpio-id = <123>;
 		gpio_start = <0x11d40000>;
@@ -5871,7 +5976,7 @@ page_owner=on loop.max_part=7";
 		clocks = <&imp_iic_wrap_s IMP_IIC_WRAP_S_AP_I2C9_CG_RO>,
 			<&infracfg_ao INFRACFG_AO_AP_DMA_CG>;
 		clock-names = "main", "dma";
-		clock-div = <3>;
+		clock-div = <5>;
 		scl-gpio-id = <120>;
 		sda-gpio-id = <121>;
 		gpio_start = <0x11d40000>;
@@ -5891,7 +5996,7 @@ page_owner=on loop.max_part=7";
 		interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&imp_iic_wrap_c IMP_IIC_WRAP_C_AP_I2C10_CG_RO>;
 		clock-names = "main";
-		clock-div = <3>;
+		clock-div = <5>;
 		aed = <0x1a>;
 		mediatek,fifo_only;
 	};
@@ -5903,7 +6008,7 @@ page_owner=on loop.max_part=7";
 		interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&imp_iic_wrap_c IMP_IIC_WRAP_C_AP_I2C11_CG_RO>;
 		clock-names = "main";
-		clock-div = <3>;
+		clock-div = <5>;
 		aed = <0x1a>;
 		mediatek,fifo_only;
 	};
@@ -6002,7 +6107,7 @@ page_owner=on loop.max_part=7";
 		/* charging current */
 		usb_charger_current = <500000>;
 		ac_charger_current = <2050000>;
-		ac_charger_input_current = <1500000>;
+		ac_charger_input_current = <3200000>;
 		non_std_ac_charger_current = <500000>;
 		charging_host_charger_current = <1500000>;
 		ta_ac_charger_current = <3000000>;
@@ -6027,7 +6132,7 @@ page_owner=on loop.max_part=7";
 		enable_dynamic_mivr;
 
 		/* common */
-		battery_cv = <4450000>;
+		battery_cv = <4350000>;
 		max_charger_voltage = <6500000>;
 		min_charger_voltage = <4600000>;
 
@@ -6042,7 +6147,7 @@ page_owner=on loop.max_part=7";
 		usb_charger_current_configured = <500000>;
 		usb_charger_current = <500000>;
 		ac_charger_current = <2050000>;
-		ac_charger_input_current = <1500000>;
+		ac_charger_input_current = <3200000>;
 		non_std_ac_charger_current = <500000>;
 		charging_host_charger_current = <1500000>;
 		apple_1_0a_charger_current = <650000>;
@@ -6172,11 +6277,18 @@ page_owner=on loop.max_part=7";
 	touch: touch {
 	};
 
-	xiaomi_touch: xiaomi_touch {
+	nfc:nfc {
+		compatible = "mediatek,nfc-gpio-v2";
+		gpio-rst = <10>;
+		gpio-rst-std = <&pio 10 0x0>;
+		gpio-irq = <11>;
+		gpio-irq-std = <&pio 11 0x0>;
 	};
 
-	xiaomi_touch: xiaomi_touch {
+	irq_nfc: irq_nfc {
+		compatible = "mediatek,irq_nfc-eint";
 	};
+	/* NFC end */
 
 	subpmic_pmu_eint: subpmic_pmu_eint {
 	};
@@ -6261,17 +6373,6 @@ page_owner=on loop.max_part=7";
 		credit_didt_doe_vx_low_freq_enable = <2>;
 	};
 
-	cp_qc30: cp_qc30 {
-	};
-
-	usbpd_pm: usbpd_pm {
-	};
-
-	onewire_gpio: onewire_gpio {
-	};
-
-	maxim_ds28e16: maxim_ds28e16 {
-	};
 	drcc: drcc {
 		compatible = "mediatek,drcc";
 		state = <255>;
@@ -6377,7 +6478,7 @@ page_owner=on loop.max_part=7";
 		compatible = "mediatek,speaker_amp";
 		#sound-dai-cells = <0>;
 		reg = <0x34>;
-	        status = "disabled";
+		status = "okay";
 	};
 };
 
@@ -6630,25 +6731,6 @@ page_owner=on loop.max_part=7";
 	};
 	md1_sim2_hot_plug_eint:md1_sim2_hot_plug_eint {
 	};
-	thermal_message: thermal-message {
-	};
-};
-
-&pio {
-	pm_reset_active: reset_active@gpio134 {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO134__FUNC_GPIO134>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-};
-
-&fan53870_pm {
-	status = "okay";
-
-	pinctrl-names = "default";
-	pinctrl-0 = <&pm_reset_active>;
 };
 
 #ifndef CONFIG_FPGA_EARLY_PORTING

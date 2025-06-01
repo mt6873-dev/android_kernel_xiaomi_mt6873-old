@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1886,7 +1885,7 @@ skip_update:
 static int eem_volt_thread_handler(void *data)
 {
 	struct eem_ctrl *ctrl = (struct eem_ctrl *)data;
-	struct eem_det *det = id_to_eem_det(ctrl->det_id);
+	struct eem_det *det;
 #ifdef CONFIG_EEM_AEE_RR_REC
 	int temp = -1;
 #endif
@@ -1897,6 +1896,10 @@ static int eem_volt_thread_handler(void *data)
 #endif
 
 	FUNC_ENTER(FUNC_LV_HELP);
+	if (ctrl == NULL)
+		return 0;
+
+	det = id_to_eem_det(ctrl->det_id);
 	if (det == NULL)
 		return 0;
 

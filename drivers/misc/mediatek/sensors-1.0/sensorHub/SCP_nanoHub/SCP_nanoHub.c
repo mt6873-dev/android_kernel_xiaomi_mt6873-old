@@ -1,7 +1,6 @@
 /* SCP sensor hub driver
  *
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -537,9 +536,13 @@ static void SCP_sensorHub_sync_time_func(unsigned long data)
 
 static int SCP_sensorHub_direct_push_work(void *data)
 {
+	int ret = 0;
+
 	for (;;) {
-		wait_event(chre_kthread_wait,
+		ret = wait_event_interruptible(chre_kthread_wait,
 			READ_ONCE(chre_kthread_wait_condition));
+		if (ret)
+			continue;
 		WRITE_ONCE(chre_kthread_wait_condition, false);
 		mark_timestamp(0, WORK_START, ktime_get_boot_ns(), 0);
 		SCP_sensorHub_read_wp_queue();
@@ -863,7 +866,7 @@ static void SCP_sensorHub_init_sensor_state(void)
 
 	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].sensorType =
 		SENSOR_TYPE_PICK_UP_GESTURE;
-	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].rate = SENSOR_RATE_ONCHANGE;
+	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].rate = SENSOR_RATE_ONESHOT;
 	mSensorState[SENSOR_TYPE_PICK_UP_GESTURE].timestamp_filter = false;
 
 	mSensorState[SENSOR_TYPE_WAKE_GESTURE].sensorType =
@@ -910,22 +913,10 @@ static void SCP_sensorHub_init_sensor_state(void)
 
 	mSensorState[SENSOR_TYPE_SAR].sensorType = SENSOR_TYPE_SAR;
 	mSensorState[SENSOR_TYPE_SAR].timestamp_filter = false;
-
-	mSensorState[SENSOR_TYPE_PS_FACTORY_STRM].sensorType = SENSOR_TYPE_PS_FACTORY_STRM;
-	mSensorState[SENSOR_TYPE_PS_FACTORY_STRM].timestamp_filter = false;
-
-	mSensorState[SENSOR_TYPE_ALS_FACTORY_STRM].sensorType = SENSOR_TYPE_ALS_FACTORY_STRM;
-	mSensorState[SENSOR_TYPE_ALS_FACTORY_STRM].timestamp_filter = false;
-
-	mSensorState[SENSOR_TYPE_SAR_ALGO].sensorType = SENSOR_TYPE_SAR_ALGO;
-	mSensorState[SENSOR_TYPE_SAR_ALGO].timestamp_filter = false;
-
-    mSensorState[SENSOR_TYPE_ELEVATOR_DETECT].sensorType = SENSOR_TYPE_ELEVATOR_DETECT;
-	mSensorState[SENSOR_TYPE_ELEVATOR_DETECT].timestamp_filter = false;
 }
 
 static void init_sensor_config_cmd(struct ConfigCmd *cmd,
-		int sensor_type)
+		uint8_t sensor_type)
 {
 	uint8_t alt = mSensorState[sensor_type].alt;
 	bool enable = 0;
@@ -1034,7 +1025,8 @@ static int SCP_sensorHub_flush(int handle)
 static int SCP_sensorHub_report_raw_data(struct data_unit_t *data_t)
 {
 	struct SCP_sensorHub_data *obj = obj_data;
-	int err = 0, sensor_type = 0, sensor_id = 0;
+	int err = 0;
+	uint8_t sensor_type = 0, sensor_id = 0;
 	atomic_t *p_flush_count = NULL;
 	bool raw_enable = 0;
 	int64_t raw_enable_time = 0;
@@ -1081,8 +1073,8 @@ static int SCP_sensorHub_report_raw_data(struct data_unit_t *data_t)
 static int SCP_sensorHub_report_alt_data(struct data_unit_t *data_t)
 {
 	struct SCP_sensorHub_data *obj = obj_data;
-	int err = 0, sensor_type = 0, sensor_id = 0, alt_id;
-	uint8_t alt = 0;
+	int err = 0;
+	uint8_t alt = 0, alt_id, sensor_type = 0, sensor_id = 0;
 	atomic_t *p_flush_count = NULL;
 	bool alt_enable = 0;
 	int64_t alt_enable_time = 0;
@@ -1139,6 +1131,7 @@ static int SCP_sensorHub_server_dispatch_data(uint32_t *currWp)
 
 	int64_t scp_time = 0;
 
+	memset(&event, 0, sizeof(struct data_unit_t));
 	pStart = (char *)READ_ONCE(obj->SCP_sensorFIFO) +
 		offsetof(struct sensorFIFO, data);
 	pEnd = pStart +  READ_ONCE(obj->SCP_sensorFIFO->FIFOSize);
@@ -2190,12 +2183,14 @@ static void restoring_enable_sensorHub_sensor(int handle)
 
 void sensorHub_power_up_loop(void *data)
 {
-	int handle = 0;
+	int ret = 0, handle = 0;
 	struct SCP_sensorHub_data *obj = obj_data;
 	unsigned long flags = 0;
 
-	wait_event(power_reset_wait,
+	ret = wait_event_interruptible(power_reset_wait,
 		READ_ONCE(scp_system_ready) && READ_ONCE(scp_chre_ready));
+	if (ret)
+		return;
 	spin_lock_irqsave(&scp_state_lock, flags);
 	WRITE_ONCE(scp_chre_ready, false);
 	WRITE_ONCE(scp_system_ready, false);
@@ -2420,7 +2415,8 @@ static ssize_t nanohub_trace_store(struct device_driver *ddri,
 	const char *buf, size_t count)
 {
 	struct SCP_sensorHub_data *obj = obj_data;
-	int handle, trace = 0;
+	int trace = 0;
+	unsigned int handle;
 	int res = 0;
 
 	pr_debug("%s buf:%s\n", __func__, buf);

@@ -13,6 +13,9 @@
 #include "mddp_export.h"
 #include "mddp_ipc.h"
 
+#define MDDP_ABNORMAL_CCCI_SEND_FAILED                      (1U << 0)
+#define MDDP_ABNORMAL_CHECK_FEATURE_ABSENT                  (1U << 1)
+#define MDDP_ABNORMAL_WIFI_DRV_GET_FEATURE_BEFORE_MD_READY  (1U << 2)
 //------------------------------------------------------------------------------
 // Struct definition.
 // -----------------------------------------------------------------------------
@@ -24,10 +27,6 @@ enum mddp_event_e {
 	MDDP_EVT_FUNC_DISABLE,  /**< Disable MDDP. */
 	MDDP_EVT_FUNC_ACT,  /**< Activate MDDP. */
 	MDDP_EVT_FUNC_DEACT,  /**< Deactivate MDDP. */
-
-	MDDP_EVT_DRV_REGHDLR, /**< Driver reg handler. */
-	MDDP_EVT_DRV_DEREGHDLR, /**< Driver dereg handler. */
-	MDDP_EVT_DRV_DISABLE, /**< Disable MDDP from driver. */
 
 	MDDP_EVT_MD_RSP_OK,  /**< MD Response OK. */
 	MDDP_EVT_MD_RSP_FAIL,  /**< MD Response FAIL. */
@@ -98,6 +97,10 @@ struct mddp_app_t {
 	mddp_sysfs_cbf_t            sysfs_callback; /**< Sysfs callback. */
 
 	struct mddp_sm_entry_t     *state_machines[MDDP_STATE_CNT];
+	uint32_t                    drv_reg;
+	atomic_t                    feature;
+	uint32_t                    abnormal_flags;
+	uint32_t                    reset_cnt;
 };
 
 
@@ -140,6 +143,8 @@ void mddp_dump_sm_table(struct mddp_app_t *app);
 #endif
 enum mddp_state_e mddp_sm_on_event(struct mddp_app_t *app,
 		enum mddp_event_e event);
+
+void mddp_check_feature(void);
 
 int32_t mddp_sm_msg_hdlr(uint32_t user_id,
 		uint32_t msg_id, void *buf, uint32_t buf_len);

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -37,10 +36,16 @@
 #define DISABLE_DLPT_FEATURE
 #endif /* defined(CONFIG_FPGA_EARLY_PORTING) || PT_DLPT_BRINGUP */
 
-//#define DISABLE_LOW_BATTERY_PROTECT
-#define DISABLE_BATTERY_OC_PROTECT
-#define DISABLE_BATTERY_PERCENT_PROTECT
+/* if not support GM3, disable DLPT */
+#if defined(CONFIG_MTK_DISABLE_GAUGE)
 #define DISABLE_DLPT_FEATURE
+#endif /* defined(CONFIG_MTK_DISABLE_GAUGE) */
+
+#ifndef DISABLE_LOW_BATTERY_PROTECT
+#if defined(CONFIG_MACH_MT6781)
+#define LBAT_LIMIT_BCPU_OPP
+#endif
+#endif
 
 #define POWER_UVLO_VOLT_LEVEL 2600
 #define IMAX_MAX_VALUE 5500
@@ -48,6 +53,10 @@
 #define POWER_INT0_VOLT 3400
 #define POWER_INT1_VOLT 3250
 #define POWER_INT2_VOLT 3100
+
+#define POWER_INT0_VOLT_EXT 3700
+#define POWER_INT1_VOLT_EXT 3550
+#define POWER_INT2_VOLT_EXT 1000
 
 #define POWER_BAT_OC_CURRENT_H    5800
 #define POWER_BAT_OC_CURRENT_L    6300
@@ -66,6 +75,27 @@
 extern const char *pmic_auxadc_channel_name[];
 
 /* Legacy pmic auxadc interface */
+#if defined(CONFIG_MTK_PMIC_CHIP_MT6358)
+/* for CONFIG_MACH_MT6781 */
+enum {
+	AUXADC_LIST_BATADC,
+	AUXADC_LIST_START = AUXADC_LIST_BATADC,
+	AUXADC_LIST_VCDT,
+	AUXADC_LIST_BATTEMP,
+	AUXADC_LIST_VBIF,
+	AUXADC_LIST_CHIP_TEMP,
+	AUXADC_LIST_DCXO,
+	AUXADC_LIST_ACCDET,
+	AUXADC_LIST_TSX,
+	AUXADC_LIST_HPOFS_CAL,
+	AUXADC_LIST_VCORE_TEMP,
+	AUXADC_LIST_VPROC_TEMP,
+	AUXADC_LIST_VGPU_TEMP,
+	AUXADC_LIST_DCXO_VOLT,
+	AUXADC_LIST_END = AUXADC_LIST_DCXO_VOLT,
+	AUXADC_LIST_ISENSE,
+};
+#else
 enum {
 	AUXADC_LIST_BATADC,
 	AUXADC_LIST_START = AUXADC_LIST_BATADC,
@@ -84,7 +114,7 @@ enum {
 	AUXADC_LIST_END = AUXADC_LIST_VBIF,
 	AUXADC_LIST_ISENSE,
 };
-
+#endif
 
 extern void pmic_auxadc_init(void);
 extern void pmic_auxadc_dump_regs(char *buf);

@@ -2,7 +2,6 @@
  * A fairly generic DMA-API to IOMMU-API glue layer.
  *
  * Copyright (C) 2014-2015 ARM Ltd.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * based in part on arch/arm/mm/dma-mapping.c:
  * Copyright (C) 2000-2004 Russell King
@@ -795,11 +794,6 @@ static int __finalise_sg(struct device *dev, struct scatterlist *sg, int nents,
 				__func__, s_iova_len,
 				s_length, s_iova_off, count);
 	}
-
-	/* avoid sg don'tbe deal fully */
-	if (i != nents)
-		pr_info("hc3 %s maybe error, i:%d--%d, count:%d\n", __func__, i, nents, count);
-
 	return count;
 }
 

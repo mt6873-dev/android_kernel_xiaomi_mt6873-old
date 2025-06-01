@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,10 +17,11 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 #include "ccu_mailbox_extif.h"
+#include <linux/fs.h>
 
 #ifdef CONFIG_COMPAT
 /*64 bit*/
-#include <linux/fs.h>
+
 #include <linux/compat.h>
 #endif
 

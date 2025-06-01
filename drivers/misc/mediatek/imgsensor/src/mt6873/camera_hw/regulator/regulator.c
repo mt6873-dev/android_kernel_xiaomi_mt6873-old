@@ -1,7 +1,5 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
- * Copyright (C) 2020 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -103,9 +101,6 @@ static enum IMGSENSOR_RETURN regulator_set(
 	enum IMGSENSOR_HW_PIN_STATE pin_state)
 {
 	struct regulator     *pregulator;
-#ifndef _XIAOMI_BOMB_
-	struct regulator     *pregulator_main2 = NULL;
-#endif
 	struct REGULATOR     *preg = (struct REGULATOR *)pinstance;
 	int reg_type_offset;
 	atomic_t             *enable_cnt;
@@ -114,20 +109,14 @@ static enum IMGSENSOR_RETURN regulator_set(
 	if (pin > IMGSENSOR_HW_PIN_DOVDD   ||
 	    pin < IMGSENSOR_HW_PIN_AVDD    ||
 	    pin_state < IMGSENSOR_HW_PIN_STATE_LEVEL_0 ||
-	    pin_state >= IMGSENSOR_HW_PIN_STATE_LEVEL_HIGH)
+	    pin_state >= IMGSENSOR_HW_PIN_STATE_LEVEL_HIGH ||
+	    sensor_idx < 0)
 		return IMGSENSOR_RETURN_ERROR;
 
 	reg_type_offset = REGULATOR_TYPE_VCAMA;
 
 	pregulator = preg->pregulator[(unsigned int)sensor_idx][
 		reg_type_offset + pin - IMGSENSOR_HW_PIN_AVDD];
-#ifndef _XIAOMI_BOMB_
-	if (sensor_idx != IMGSENSOR_SENSOR_IDX_MAIN2) {
-		pregulator_main2 =
-			preg->pregulator[IMGSENSOR_SENSOR_IDX_MAIN2][
-				reg_type_offset + pin - IMGSENSOR_HW_PIN_AVDD];
-	}
-#endif
 
 	enable_cnt = &preg->enable_cnt[(unsigned int)sensor_idx][
 		reg_type_offset + pin - IMGSENSOR_HW_PIN_AVDD];
@@ -154,30 +143,6 @@ static enum IMGSENSOR_RETURN regulator_set(
 				  pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0]);
 				return IMGSENSOR_RETURN_ERROR;
 			}
-#ifndef _XIAOMI_BOMB_
-			if (IMGSENSOR_HW_PIN_AVDD == pin && pregulator_main2) {
-				if (regulator_set_voltage(pregulator_main2,
-					regulator_voltage[
-					pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0],
-					regulator_voltage[
-					pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0])) {
-
-					PK_PR_ERR(
-					  "[regulator_main2]fail to regulator_set_voltage, powertype:%d powerId:%d\n",
-					  pin,
-					  regulator_voltage[
-					  pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0]);
-				}
-				if (regulator_enable(pregulator_main2)) {
-					PK_PR_ERR(
-					"[regulator_main2]fail to regulator_enable, powertype:%d powerId:%d\n",
-					pin,
-					regulator_voltage[
-					  pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0]);
-					//return IMGSENSOR_RETURN_ERROR;
-				}
-			}
-#endif
 			atomic_inc(enable_cnt);
 		} else {
 			if (regulator_is_enabled(pregulator))
@@ -189,21 +154,6 @@ static enum IMGSENSOR_RETURN regulator_set(
 					pin);
 				return IMGSENSOR_RETURN_ERROR;
 			}
-#ifndef _XIAOMI_BOMB_
-			if (IMGSENSOR_HW_PIN_AVDD == pin && pregulator_main2) {
-				mdelay(1);
-				if (regulator_is_enabled(pregulator_main2))
-					PK_DBG("[regulator_main2]%d is enabled\n", pin);
-
-				if (regulator_disable(pregulator_main2)) {
-					PK_PR_ERR(
-						"[regulator_main2]fail to regulator_disable, powertype: %d\n",
-						pin);
-					//return IMGSENSOR_RETURN_ERROR;
-				}
-			}
-#endif
-
 			atomic_dec(enable_cnt);
 		}
 	} else {

@@ -47,7 +47,7 @@
 #include <kree/mem.h>
 #include <kree/system.h>
 
-#define TZ_TA_SECMEM_UUID   "charcom.mediatek.geniezone.srv.mem"
+#define TZ_TA_SECMEM_UUID   "com.mediatek.geniezone.srv.mem"
 #endif
 
 static bool is_invalid_hooks(struct trusted_mem_device *mem_device)
@@ -282,7 +282,7 @@ static int tmem_core_alloc_chunk_internal(enum TRUSTED_MEM_TYPE mem_type,
 		return ret;
 	}
 
-	pr_debug("[%d] allocated handle is 0x%x\n", mem_type, *sec_handle);
+	pr_info("[%d] allocated handle is 0x%x\n", mem_type, *sec_handle);
 	regmgr_region_ref_inc(mem_device->reg_mgr, mem_device->mem_type);
 	return TMEM_OK;
 }
@@ -328,8 +328,8 @@ int tmem_query_gz_handle_to_pa(enum TRUSTED_MEM_TYPE mem_type, u32 alignment,
 		return ret;
 	}
 
-	*phy_addr = p[1].value.a << SECMEM_64BIT_PHYS_SHIFT;
-	pr_info("[%s] ok(pa=0x%x)\n", __func__, *phy_addr);
+	*phy_addr = (uint64_t)p[1].value.a << SECMEM_64BIT_PHYS_SHIFT;
+	pr_info("[%s] handle=0x%x, ok(pa=0x%lx)\n", __func__, *gz_handle, *phy_addr);
 
 	KREE_CloseSession(session);
 
@@ -399,7 +399,7 @@ int tmem_core_unref_chunk(enum TRUSTED_MEM_TYPE mem_type, u32 sec_handle,
 		return TMEM_OPERATION_NOT_REGISTERED;
 	}
 
-	pr_debug("[%d] free handle is 0x%x\n", mem_type, sec_handle);
+	pr_info("[%d] free handle is 0x%x\n", mem_type, sec_handle);
 
 	if (unlikely(!is_regmgr_region_on(mem_device->reg_mgr))) {
 		pr_err("[%d] regmgr region is still not online!\n", mem_type);
@@ -564,6 +564,9 @@ bool is_mtee_mchunks(enum TRUSTED_MEM_TYPE mem_type)
 	switch (mem_type) {
 #if defined(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)
 	case TRUSTED_MEM_SVP:
+#if defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
+	case TRUSTED_MEM_WFD:
+#endif
 #endif
 	case TRUSTED_MEM_PROT:
 	case TRUSTED_MEM_HAPP:

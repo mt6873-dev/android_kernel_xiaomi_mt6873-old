@@ -232,7 +232,11 @@ struct GED_KPI_MEOW_DVFS_FREQ_PRED {
 	int gpu_freq_cur;
 	int gpu_freq_max;
 	int gpu_freq_pred;
-	int is_GIFT_on;
+	int gift_ratio;
+
+	int target_pid;
+	int target_fps;
+	int gpu_time;
 };
 static struct GED_KPI_MEOW_DVFS_FREQ_PRED *g_psMEOW;
 
@@ -261,7 +265,12 @@ static unsigned int gx_frc_mode; /* variable to fix FRC mode*/
 static unsigned int enable_cpu_boost = 1;
 #endif /* GED_KPI_CPU_BOOST */
 static unsigned int enable_gpu_boost = 1;
+#if !defined(CONFIG_MTK_GPU_COMMON_DVFS_SUPPORT)
+/* Disable for bring-up stage unexpected exception */
+static unsigned int is_GED_KPI_enabled;
+#else
 static unsigned int is_GED_KPI_enabled = 1;
+#endif
 static unsigned int ap_self_frc_detection_rate = 20;
 #ifdef GED_ENABLE_FB_DVFS
 static unsigned int g_force_gpu_dvfs_fallback;
@@ -832,7 +841,7 @@ static void ged_kpi_statistics_and_remove(struct GED_KPI_HEAD *psHead,
 		psKPI->t_gpu,
 		psKPI->gpu_done_interval,
 		vsync_period,
-		g_psMEOW->is_GIFT_on,
+		g_psMEOW->gift_ratio,
 #ifdef GED_ENABLE_FB_DVFS
 		psKPI->cpu_gpu_info.gpu.gpu_dvfs,
 		psKPI->cpu_gpu_info.gpu.tb_dvfs_mode,
@@ -1685,9 +1694,9 @@ static void ged_kpi_work_cb(struct work_struct *psWork)
 					util_ex.util_3d, psTimeStamp->pid,
 					psTimeStamp->i32FrameID, ulID);
 
-					/* hint GiFT on/off status to EAT */
+					/* hint GiFT ratio  to EAT */
 					ged_log_perf_trace_counter(
-					"is_gift_on", g_psMEOW->is_GIFT_on,
+					"is_gift_on", g_psMEOW->gift_ratio,
 					psTimeStamp->pid,
 					psTimeStamp->i32FrameID, ulID);
 
@@ -1765,8 +1774,16 @@ static void ged_kpi_work_cb(struct work_struct *psWork)
 				= gpu_freq_pre;
 				last_3D_done = cur_3D_done;
 
-				/* store current gpu_frep info for MEOW */
+				/* store current gpu dvfs info for GiFT */
 				g_psMEOW->gpu_freq_pred = gpu_freq_pre;
+				if (main_head == psHead &&
+					psHead->pid == g_psMEOW->target_pid) {
+					g_psMEOW->target_fps = psHead->target_fps;
+					g_psMEOW->gpu_time = time_spent;
+				} else {
+					g_psMEOW->target_fps = -1;
+					g_psMEOW->gpu_time = -1;
+				}
 
 				if (!g_force_gpu_dvfs_fallback)
 					ged_set_backup_timer_timeout(0);
@@ -2617,6 +2634,7 @@ GED_ERROR ged_kpi_timer_based_pick_riskyBQ(int *pT_gpu_real, int *pT_gpu_pipe,
 EXPORT_SYMBOL(ged_kpi_timer_based_pick_riskyBQ);
 #endif /* GED_ENABLE_TIMER_BASED_DVFS_MARGIN */
 
+/* For GiFT usage*/
 /* ------------------------------------------------------------------- */
 GED_ERROR ged_kpi_query_dvfs_freq_pred(int *gpu_freq_cur
 	, int *gpu_freq_max, int *gpu_freq_pred)
@@ -2639,16 +2657,56 @@ GED_ERROR ged_kpi_query_dvfs_freq_pred(int *gpu_freq_cur
 EXPORT_SYMBOL(ged_kpi_query_dvfs_freq_pred);
 
 /* ------------------------------------------------------------------- */
-GED_ERROR ged_kpi_set_gift_status(int mode)
+/* For GiFT usage */
+GED_ERROR ged_kpi_query_gpu_dvfs_info(int *gpu_freq_cur
+, int *gpu_freq_max, int *gpu_freq_pred, int *target_fps, int *gpu_time)
 {
 #ifdef MTK_GED_KPI
-	if (mode == 1)
-		g_psMEOW->is_GIFT_on = 1;
+	if (gpu_freq_cur == NULL
+			|| gpu_freq_max == NULL
+			|| gpu_freq_pred == NULL
+			|| gpu_time == NULL)
+		return GED_ERROR_FAIL;
+
+	*gpu_freq_cur = g_psMEOW->gpu_freq_cur;
+	*gpu_freq_max = g_psMEOW->gpu_freq_max;
+	*gpu_freq_pred = g_psMEOW->gpu_freq_pred;
+
+	*target_fps = g_psMEOW->target_fps;
+	if (g_psMEOW->gpu_time != -1)
+		*gpu_time = g_psMEOW->gpu_time / 1000; /* micro second*/
 	else
-		g_psMEOW->is_GIFT_on = 0;
+		*gpu_time = -1;
+
+	return GED_OK;
+#else
+	return GED_OK;
+#endif /* MTK_GED_KPI */
+}
+EXPORT_SYMBOL(ged_kpi_query_gpu_dvfs_info);
+
+/* ------------------------------------------------------------------- */
+GED_ERROR ged_kpi_set_gift_status(int ratio)
+{
+#ifdef MTK_GED_KPI
+	if (ratio > 0)
+		g_psMEOW->gift_ratio = ratio;
+	else
+		g_psMEOW->gift_ratio = 0;
+
 	return GED_OK;
 #endif /* MTK_GED_KPI */
 	return GED_OK;
 }
 EXPORT_SYMBOL(ged_kpi_set_gift_status);
 /* ------------------------------------------------------------------- */
+GED_ERROR ged_kpi_set_gift_target_pid(int pid)
+{
+#ifdef MTK_GED_KPI
+	if (pid != g_psMEOW->target_pid)
+		g_psMEOW->target_pid = pid;
+	return GED_OK;
+#endif /* MTK_GED_KPI */
+	return GED_OK;
+}
+EXPORT_SYMBOL(ged_kpi_set_gift_target_pid);

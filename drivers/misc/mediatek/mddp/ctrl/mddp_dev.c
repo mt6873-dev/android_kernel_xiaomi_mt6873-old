@@ -3,7 +3,6 @@
  * mddp_dev.c - MDDP device node API.
  *
  * Copyright (c) 2020 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/cdev.h>
@@ -46,13 +45,6 @@ struct mddp_dev_rb_head_t {
 //------------------------------------------------------------------------------
 // Private helper macro.
 //------------------------------------------------------------------------------
-#define MDDP_DEV_RB_LOCK_INIT(_locker) spin_lock_init(&_locker)
-#define MDDP_DEV_RB_LOCK(_locker) spin_lock(&_locker)
-#define MDDP_DEV_RB_UNLOCK(_locker) spin_unlock(&_locker)
-
-#define MDDP_DEV_RB_LOCK_IRQ(_locker) spin_lock_irq(&_locker)
-#define MDDP_DEV_RB_UNLOCK_IRQ(_locker) spin_unlock_irq(&_locker)
-
 #define MDDP_DEV_CLONE_COMM_HDR(_rsp, _req, _status) \
 	do { \
 		(_rsp)->mcode = (_req)->mcode; \
@@ -84,8 +76,10 @@ static ssize_t mddp_dev_write(struct file *file,
 	const char __user *buf, size_t count, loff_t *ppos);
 static long mddp_dev_ioctl(struct file *file,
 	unsigned int cmd, unsigned long arg);
+#ifdef CONFIG_COMPAT
 static long mddp_dev_compat_ioctl(struct file *filp,
 	unsigned int cmd, unsigned long arg);
+#endif
 static unsigned int mddp_dev_poll(struct file *fp,
 	struct poll_table_struct *poll);
 
@@ -125,8 +119,8 @@ mddp_dev_rsp_status_mapping_s[MDDP_CMCMD_RSP_CNT][2] =  {
 static uint32_t mddp_dev_major_s;
 static struct cdev mddp_cdev_s;
 struct class *mddp_dev_class_s;
-uint32_t mddp_debug_log_class_s;
-uint32_t mddp_debug_log_level_s;
+uint32_t mddp_debug_log_class_s = MDDP_LC_ALL;
+uint32_t mddp_debug_log_level_s = MDDP_LL_DEFAULT;
 static bool mddp_dstate_activated_s;
 
 //------------------------------------------------------------------------------
@@ -197,6 +191,12 @@ state_show(struct device *dev, struct device_attribute *attr, char *buf)
 		ret_num += scnprintf(buf + ret_num, PAGE_SIZE - ret_num,
 					"type(%d), state(%d)\n",
 					app->type, app->state);
+		ret_num += scnprintf(buf + ret_num, PAGE_SIZE - ret_num,
+				"drv_reg(%d), feature(%d)\n",
+				app->drv_reg, atomic_read(&app->feature));
+		ret_num += scnprintf(buf + ret_num, PAGE_SIZE - ret_num,
+				"abnormal(%x), reset_cnt(%d)\n",
+				app->abnormal_flags, app->reset_cnt);
 
 		// NG. Failed to fill-in data!
 		if (ret_num <= 0)
@@ -260,7 +260,6 @@ wh_statistic_show(struct device *dev, struct device_attribute *attr, char *buf)
 }
 static DEVICE_ATTR_RO(wh_statistic);
 
-#ifdef CONFIG_MTK_ENG_BUILD
 static ssize_t
 wh_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -374,7 +373,6 @@ not_support_error:
 }
 static DEVICE_ATTR_RW(em_test);
 #endif /* MDDP_EM_SUPPORT */
-#endif /* CONFIG_MTK_ENG_BUILD */
 
 static struct attribute *mddp_attrs[] = {
 	&dev_attr_version.attr,
@@ -382,11 +380,9 @@ static struct attribute *mddp_attrs[] = {
 	&dev_attr_wh_statistic.attr,
 	&dev_attr_debug_log.attr,
 
-#ifdef CONFIG_MTK_ENG_BUILD
 	&dev_attr_wh_enable.attr,
 #ifdef MDDP_EM_SUPPORT
 	&dev_attr_em_test.attr,
-#endif
 #endif
 
 	NULL,
@@ -424,13 +420,15 @@ static inline void __mddp_dev_rb_unlink(struct mddp_dev_rb_t *entry,
 static void mddp_dev_rb_enqueue_tail(struct mddp_dev_rb_head_t *list,
 		struct mddp_dev_rb_t *new)
 {
-	MDDP_DEV_RB_LOCK(list->locker);
+	unsigned long flags;
 
+	spin_lock(&list->locker);
 	__mddp_dev_insert(new, list->prev, (struct mddp_dev_rb_t *) list, list);
+	spin_unlock(&list->locker);
 
-	MDDP_DEV_RB_UNLOCK(list->locker);
-
-	wake_up_all(&list->read_wq);
+	spin_lock_irqsave(&list->read_wq.lock, flags);
+	wake_up_all_locked(&list->read_wq);
+	spin_unlock_irqrestore(&list->read_wq.lock, flags);
 }
 
 static struct mddp_dev_rb_t *mddp_dev_rb_peek(
@@ -452,7 +450,7 @@ static struct mddp_dev_rb_t *mddp_dev_rb_query(
 	struct mddp_dev_rb_t     *entry = NULL;
 	uint32_t                  cnt = 0;
 
-	MDDP_DEV_RB_LOCK(list->locker);
+	spin_lock(&list->locker);
 
 	entry = mddp_dev_rb_peek(list);
 	while (entry) {
@@ -468,7 +466,7 @@ static struct mddp_dev_rb_t *mddp_dev_rb_query(
 		cnt += 1;
 	}
 
-	MDDP_DEV_RB_UNLOCK(list->locker);
+	spin_unlock(&list->locker);
 
 	return entry;
 }
@@ -478,13 +476,13 @@ static struct mddp_dev_rb_t *mddp_dev_rb_dequeue(
 {
 	struct mddp_dev_rb_t     *entry = NULL;
 
-	MDDP_DEV_RB_LOCK(list->locker);
+	spin_lock(&list->locker);
 
 	entry = mddp_dev_rb_peek(list);
 	if (entry)
 		__mddp_dev_rb_unlink(entry, list);
 
-	MDDP_DEV_RB_UNLOCK(list->locker);
+	spin_unlock(&list->locker);
 
 	return entry;
 }
@@ -596,7 +594,7 @@ static void mddp_clear_dstate(
 //------------------------------------------------------------------------------
 void mddp_dev_list_init(struct mddp_dev_rb_head_t *list)
 {
-	MDDP_DEV_RB_LOCK_INIT(list->locker);
+	spin_lock_init(&list->locker);
 	list->cnt = 0;
 	list->prev = list->next = (struct mddp_dev_rb_t *)list;
 
@@ -605,17 +603,6 @@ void mddp_dev_list_init(struct mddp_dev_rb_head_t *list)
 
 int32_t mddp_dev_init(void)
 {
-	/*
-	 * Debug log init.
-	 */
-#ifdef CONFIG_MTK_ENG_BUILD
-	mddp_debug_log_class_s = MDDP_LC_ALL;
-	mddp_debug_log_level_s = MDDP_LL_ENG_DEF;
-#else
-	mddp_debug_log_class_s = MDDP_LC_ALL;
-	mddp_debug_log_level_s = MDDP_LL_NON_ENG_DEF;
-#endif
-
 	atomic_set(&mddp_dev_open_ref_cnt_s, 0);
 
 	/*
@@ -643,6 +630,9 @@ void mddp_dev_uninit(void)
 	 * Release CHAR device node.
 	 */
 	_mddp_dev_release_dev_node();
+
+	mddp_clear_dstate(&mddp_hidl_rb_head_s);
+	mddp_clear_dstate(&mddp_dstate_rb_head_s);
 }
 
 void mddp_dev_response(enum mddp_app_type_e type,
@@ -729,7 +719,7 @@ void mddp_enqueue_dstate(enum mddp_dstate_id_e id, ...)
 	getnstimeofday(&ts);
 	rtc_time_to_tm(ts.tv_sec, &rt);
 	snprintf(curr_time_str, MDDP_CURR_TIME_STR_SZ,
-			"%d%02d%02d %02d:%02d:%02d.%09d UTC",
+			"%d%02d%02d %02d:%02d:%02d.%09ld UTC",
 			rt.tm_year + 1900, rt.tm_mon + 1, rt.tm_mday,
 			rt.tm_hour, rt.tm_min, rt.tm_sec, ts.tv_nsec);
 
@@ -814,11 +804,11 @@ static ssize_t mddp_dev_read(struct file *file, char *buf, size_t count, loff_t 
 	 */
 	if (mddp_dev_rb_queue_empty(list)) {
 		if (!(file->f_flags & O_NONBLOCK)) {
-			MDDP_DEV_RB_LOCK_IRQ(list->read_wq.lock);
+			spin_lock_irq(&list->read_wq.lock);
 			ret = wait_event_interruptible_locked_irq(
 				list->read_wq,
 				!mddp_dev_rb_queue_empty(list));
-			MDDP_DEV_RB_UNLOCK_IRQ(list->read_wq.lock);
+			spin_unlock_irq(&list->read_wq.lock);
 
 			if (ret == -ERESTARTSYS) {
 				ret = -EINTR;

@@ -422,16 +422,6 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 
 EXPORT_SYMBOL(mmc_alloc_host);
 
-static int mmc_validate_host_caps(struct mmc_host *host)
-{
-	if (host->caps & MMC_CAP_SDIO_IRQ && !host->ops->enable_sdio_irq) {
-		dev_warn(host->parent, "missing ->enable_sdio_irq() ops\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 /**
  *	mmc_add_host - initialise host hardware
  *	@host: mmc host
@@ -444,9 +434,8 @@ int mmc_add_host(struct mmc_host *host)
 {
 	int err;
 
-	err = mmc_validate_host_caps(host);
-	if (err)
-		return err;
+	WARN_ON((host->caps & MMC_CAP_SDIO_IRQ) &&
+		!host->ops->enable_sdio_irq);
 
 	err = device_add(&host->class_dev);
 	if (err)
@@ -500,7 +489,6 @@ EXPORT_SYMBOL(mmc_remove_host);
  */
 void mmc_free_host(struct mmc_host *host)
 {
-	cancel_delayed_work_sync(&host->detect);
 	mmc_crypto_free_host(host);
 	mmc_pwrseq_free(host);
 	put_device(&host->class_dev);

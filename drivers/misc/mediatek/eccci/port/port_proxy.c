@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -74,6 +73,7 @@ int send_new_time_to_new_md(int md_id, int tz)
 	int ret;
 	int index;
 	char *name = "ccci_0_202";
+	int has_write;
 
 	do_gettimeofday(&tv);
 	timeinfo[0] = tv.tv_sec;
@@ -81,8 +81,13 @@ int send_new_time_to_new_md(int md_id, int tz)
 	timeinfo[2] = tz;
 	timeinfo[3] = sys_tz.tz_dsttime;
 
-	snprintf(ccci_time, sizeof(ccci_time), "%010u,%010u,%010u,%010u",
+	has_write = snprintf(ccci_time, sizeof(ccci_time), "%010u,%010u,%010u,%010u",
 			timeinfo[0], timeinfo[1], timeinfo[2], timeinfo[3]);
+	if (has_write < 0 || has_write >= sizeof(ccci_time)) {
+		CCCI_ERROR_LOG(-1, CHAR, "get ccci time fail, has_write = %d\n",
+			has_write);
+		return -1;
+	}
 	index = mtk_ccci_request_port(name);
 	ret = mtk_ccci_send_data(index, ccci_time, strlen(ccci_time) + 1);
 
@@ -100,7 +105,7 @@ int port_dev_kernel_read(struct port_t *port, char *buf, int size)
 	md_state = ccci_fsm_get_md_state(port->md_id);
 	if (md_state != READY && port->tx_ch != CCCI_FS_TX &&
 		port->tx_ch != CCCI_RPC_TX) {
-		pr_err(
+		pr_info_ratelimited(
 			"port %s read data fail when md_state = %d\n",
 			port->name, md_state);
 		return -ENODEV;
@@ -171,13 +176,13 @@ READ_START:
 	return ret ? ret : read_len;
 }
 
-int mtk_ccci_send_data(int index, char *buf, int size)
+int mtk_ccci_send_data(int index, const char *buf, int size)
 {
 	int ret, actual_count, header_len, alloc_size = 0;
 	int md_state;
-	struct sk_buff *skb;
-	struct ccci_header *ccci_h;
-	struct port_t *tx_port;
+	struct sk_buff *skb = NULL;
+	struct ccci_header *ccci_h = NULL;
+	struct port_t *tx_port = NULL;
 
 	if (size <= 0) {
 		CCCI_ERROR_LOG(-1, CHAR, "invalid size %d for port %d\n",
@@ -247,7 +252,7 @@ int mtk_ccci_send_data(int index, char *buf, int size)
 int mtk_ccci_read_data(int index, char *buf, size_t count)
 {
 	int ret = 0;
-	struct port_t *rx_port;
+	struct port_t *rx_port = NULL;
 
 	ret = find_port_by_channel(index, &rx_port);
 	if (ret < 0)
@@ -267,16 +272,16 @@ static inline void proxy_set_critical_user(struct port_proxy *proxy_p,
 	int user_id, int enabled)
 {
 	if (enabled)
-		proxy_p->critical_user_active |= (1 << user_id);
+		proxy_p->critical_user_active |= (1U << user_id);
 	else
-		proxy_p->critical_user_active &= ~(1 << user_id);
+		proxy_p->critical_user_active &= ~(1U << user_id);
 }
 
 static inline int proxy_get_critical_user(struct port_proxy *proxy_p,
 	int user_id)
 {
 	return ((proxy_p->critical_user_active &
-		(1 << user_id)) >> user_id);
+		(1U << user_id)) >> user_id);
 }
 
 /****************************************************************************/
@@ -583,7 +588,7 @@ long port_dev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	long ret = 0;
 	struct port_t *port = file->private_data;
-	struct ccci_smem_region *sub_smem;
+	struct ccci_smem_region *sub_smem = NULL;
 
 	switch (cmd) {
 	case CCCI_IOC_SET_HEADER:
@@ -660,7 +665,7 @@ int port_dev_mmap(struct file *fp, struct vm_area_struct *vma)
 	int md_id = port->md_id;
 	int len, ret;
 	unsigned long pfn;
-	struct ccci_smem_region *wifi_smem;
+	struct ccci_smem_region *wifi_smem = NULL;
 
 	if (port->rx_ch != CCCI_WIFI_RX)
 		return -EFAULT;
@@ -737,9 +742,9 @@ static void port_dump_net(struct port_t *port, int dir,
 	u64 ts_nsec;
 	unsigned long rem_nsec;
 	struct sk_buff *skb = (struct sk_buff *)msg_buf;
-	struct iphdr *iph;
-	struct ipv6hdr *ip6h;
-	struct icmp6hdr *icmp6h;
+	struct iphdr *iph = NULL;
+	struct ipv6hdr *ip6h = NULL;
+	struct icmp6hdr *icmp6h = NULL;
 
 	ts_nsec = local_clock();
 	rem_nsec = do_div(ts_nsec, 1000000000);
@@ -775,7 +780,7 @@ static void port_dump_string(struct port_t *port, int dir,
 	int i, j;
 	u64 ts_nsec;
 	unsigned long rem_nsec;
-	char *replace_str;
+	char *replace_str = NULL;
 	int ret = 0;
 
 	for (i = 0, j = 0; i < len && i < DUMP_BUF_SIZE &&
@@ -836,7 +841,7 @@ static void port_dump_raw_data(struct port_t *port, int dir,
 {
 #define DUMP_RAW_DATA_SIZE 16
 	unsigned int *curr_p = (unsigned int *)msg_buf;
-	unsigned char *curr_ch_p;
+	unsigned char *curr_ch_p = NULL;
 	int _16_fix_num = len / 16;
 	int tail_num = len % 16;
 	char buf[16];
@@ -1014,7 +1019,7 @@ int port_kthread_handler(void *arg)
 {
 	struct port_t *port = arg;
 	/* struct sched_param param = { .sched_priority = 1 }; */
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	unsigned long flags;
 	int ret = 0;
 	int md_id = port->md_id;
@@ -1022,15 +1027,14 @@ int port_kthread_handler(void *arg)
 	CCCI_DEBUG_LOG(md_id, TAG,
 		"port %s's thread running\n", port->name);
 
-	while (1) {
+	while (!kthread_should_stop()) {
 		if (skb_queue_empty(&port->rx_skb_list)) {
 			ret = wait_event_interruptible(port->rx_wq,
 					!skb_queue_empty(&port->rx_skb_list));
 			if (ret == -ERESTARTSYS)
-				continue;	/* FIXME */
+				continue;
 		}
-		if (kthread_should_stop())
-			break;
+
 		CCCI_DEBUG_LOG(md_id, TAG, "read on %s\n", port->name);
 		/* 1. dequeue */
 		spin_lock_irqsave(&port->rx_skb_list.lock, flags);
@@ -1297,7 +1301,7 @@ static struct port_t *proxy_get_port(struct port_proxy *proxy_p, int minor,
 	enum CCCI_CH ch)
 {
 	int i;
-	struct port_t *port;
+	struct port_t *port = NULL;
 
 	if (proxy_p == NULL)
 		return NULL;
@@ -1320,7 +1324,7 @@ static inline int proxy_send_msg_to_md(struct port_proxy *proxy_p,
 {
 	struct port_t *port = NULL;
 	struct sk_buff *skb = NULL;
-	struct ccci_header *ccci_h;
+	struct ccci_header *ccci_h = NULL;
 	int ret = 0;
 	int md_state;
 	int qno = -1;
@@ -1384,7 +1388,7 @@ static inline int proxy_dispatch_recv_skb(struct port_proxy *proxy_p,
 	int hif_id, struct sk_buff *skb, unsigned int flag)
 {
 	struct ccci_header *ccci_h = NULL;
-	struct lhif_header *lhif_h;
+	struct lhif_header *lhif_h = NULL;
 	struct ccmni_ch ccmni;
 	struct port_t *port = NULL;
 	struct list_head *port_list = NULL;
@@ -1464,7 +1468,7 @@ static inline int proxy_dispatch_recv_skb(struct port_proxy *proxy_p,
 static inline void proxy_dispatch_queue_status(struct port_proxy *proxy_p,
 	int hif, int qno, int dir, unsigned int state)
 {
-	struct port_t *port;
+	struct port_t *port = NULL;
 	int match = 0;
 	int i, matched = 0;
 
@@ -1529,7 +1533,7 @@ static inline void proxy_dispatch_md_status(struct port_proxy *proxy_p,
 	unsigned int state)
 {
 	int i;
-	struct port_t *port;
+	struct port_t *port = NULL;
 
 	for (i = 0; i < proxy_p->port_number; i++) {
 		port = proxy_p->ports + i;
@@ -1546,7 +1550,7 @@ static inline void proxy_dispatch_md_status(struct port_proxy *proxy_p,
 
 static inline void proxy_dump_status(struct port_proxy *proxy_p)
 {
-	struct port_t *port;
+	struct port_t *port = NULL;
 	/* hardcode, port number should not be larger than 64 */
 	unsigned long long port_full = 0;
 	unsigned int i;
@@ -1593,7 +1597,7 @@ static inline void proxy_init_all_ports(struct port_proxy *proxy_p)
 {
 	int i;
 	int md_id;
-	struct port_t *port;
+	struct port_t *port = NULL;
 
 	md_id = proxy_p->md_id;
 	for (i = 0; i < ARRAY_SIZE(proxy_p->rx_ch_ports); i++)
@@ -1620,7 +1624,7 @@ static inline void proxy_set_traffic_flag(struct port_proxy *proxy_p,
 	unsigned int dump_flag)
 {
 	int idx;
-	struct port_t *port;
+	struct port_t *port = NULL;
 
 	proxy_p->traffic_dump_flag = dump_flag;
 	CCCI_NORMAL_LOG(proxy_p->md_id, TAG,
@@ -1878,7 +1882,7 @@ static void ccci_proc_init(void)
 
 int ccci_port_init(int md_id)
 {
-	struct port_proxy *proxy_p;
+	struct port_proxy *proxy_p = NULL;
 
 	if (md_id < 0 || md_id >= MAX_MD_NUM) {
 		CCCI_ERROR_LOG(-1, TAG,
@@ -2028,6 +2032,27 @@ int ccci_port_check_critical_user(int md_id)
 
 /*
  * This API is called by ccci fsm,
+ * and used to check critical user only ccci_fsd exited.
+ */
+int ccci_port_critical_user_only_fsd(int md_id)
+{
+	struct port_proxy *proxy_p;
+
+	if (md_id < 0 || md_id >= MAX_MD_NUM)
+		return 0;
+
+	proxy_p = GET_PORT_PROXY(md_id);
+	if (!proxy_p)
+		return 0;
+
+	if (proxy_p->critical_user_active == (1 << CRIT_USR_FS))
+		return 1;
+
+	return 0;
+}
+
+/*
+ * This API is called by ccci fsm,
  * and used to get critical user status.
  */
 int ccci_port_get_critical_user(int md_id, unsigned int user_id)
@@ -2158,7 +2183,7 @@ int modem_dcd_state(void)
 int ccci_c2k_rawbulk_intercept(int ch_id, unsigned int interception)
 {
 	int ret = 0;
-	struct port_proxy *proxy_p;
+	struct port_proxy *proxy_p = NULL;
 	struct port_t *port = NULL;
 	struct list_head *port_list = NULL;
 	char matched = 0;
@@ -2231,7 +2256,7 @@ int ccci_c2k_rawbulk_intercept(int ch_id, unsigned int interception)
 int ccci_c2k_buffer_push(int ch_id, void *buf, int count)
 {
 	int ret = 0;
-	struct port_proxy *proxy_p;
+	struct port_proxy *proxy_p = NULL;
 	struct port_t *port = NULL;
 	struct list_head *port_list = NULL;
 	struct sk_buff *skb = NULL;

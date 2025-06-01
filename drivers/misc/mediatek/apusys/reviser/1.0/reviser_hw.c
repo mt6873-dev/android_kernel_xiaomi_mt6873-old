@@ -18,6 +18,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 
+
 #include "apusys_device.h"
 #include "reviser_cmn.h"
 #include "reviser_drv.h"
@@ -26,6 +27,7 @@
 #include "reviser_mem.h"
 #include "reviser_secure.h"
 #include "apusys_power.h"
+#include "reviser_aee.h"
 
 #define FAKE_CONTEX_REG_NUM 9
 //#define FAKE_REMAP_REG_NUM 13
@@ -59,9 +61,11 @@ APUSYS_ATTR_USE static void _reviser_set_context_ID(void *drvinfo,
 APUSYS_ATTR_USE static void _reviser_set_remap_table(void *drvinfo,
 		uint32_t offset, uint8_t valid, uint8_t ID,
 		uint8_t src_page, uint8_t dst_page);
+#if APUSYS_SECURE
 static uint32_t _reviser_get_remap_table_reg(
 		uint8_t valid, uint8_t ID,
 		uint8_t src_page, uint8_t dst_page);
+#endif
 APUSYS_ATTR_USE static void _reviser_set_default_iova(void *drvinfo,
 		uint32_t iova);
 
@@ -553,7 +557,7 @@ static uint32_t _reviser_ctrl_reg_read(void *drvinfo, uint32_t offset)
 	}
 
 	reviser_device = (struct reviser_dev_info *)drvinfo;
-#if 1
+#if APUSYS_SECURE
 
 	ret = mt_secure_call_ret2(MTK_SIP_APUSYS_CONTROL,
 			MTK_APUSYS_KERNEL_OP_REVISER_CHK_VALUE,
@@ -740,6 +744,8 @@ static void  _reviser_set_remap_table(void *drvinfo,
 		_reviser_reg_set(reviser_device->pctrl_top,
 				offset, (1 << VLM_REMAP_VALID_OFFSET));
 }
+
+#if APUSYS_SECURE
 static uint32_t  _reviser_get_remap_table_reg(
 		uint8_t valid, uint8_t ID,
 		uint8_t src_page, uint8_t dst_page)
@@ -760,6 +766,8 @@ static uint32_t  _reviser_get_remap_table_reg(
 
 	return value;
 }
+#endif
+
 int reviser_type_convert(int type, enum REVISER_DEVICE_E *reviser_type)
 {
 	int ret = 0;
@@ -794,8 +802,9 @@ int reviser_set_remap_table(void *drvinfo,
 {
 	uint32_t offset = 0;
 	int ret = 0;
+#if APUSYS_SECURE
 	uint32_t value = 0;
-
+#endif
 	DEBUG_TAG;
 
 	if (index > VLM_REMAP_TABLE_DST_MAX) {
@@ -855,8 +864,9 @@ int reviser_set_boundary(void *drvinfo,
 		enum REVISER_DEVICE_E type, int index, uint8_t boundary)
 {
 	APUSYS_ATTR_USE uint32_t offset;
+#if APUSYS_SECURE
 	uint32_t value = 0;
-
+#endif
 	DEBUG_TAG;
 
 	if (boundary > VLM_CTXT_BDY_SELECT_MAX) {
@@ -986,8 +996,9 @@ int reviser_get_interrupt_offset(void *drvinfo)
 {
 	uint32_t offset = 0;
 	int ret = 0;
+#if APUSYS_SECURE
 	size_t reg_value;
-
+#endif
 	struct reviser_dev_info *reviser_device = NULL;
 
 
@@ -1109,7 +1120,8 @@ int reviser_dram_remap_init(void *drvinfo)
 	reviser_device = (struct reviser_dev_info *)drvinfo;
 
 	//g_mem_sys.size = REMAP_DRAM_SIZE;
-	g_mem_sys.size = VLM_SIZE * VLM_CTXT_CTX_ID_COUNT;
+	//Reserve memory for IP device + Preemption device
+	g_mem_sys.size = VLM_SIZE * VLM_CTXT_CTX_ID_COUNT * 2;
 	if (reviser_mem_alloc(reviser_device->dev, &g_mem_sys)) {
 		LOG_ERR("alloc fail\n");
 		return -ENOMEM;
@@ -1275,12 +1287,18 @@ int reviser_power_off(void *drvinfo)
 	mutex_lock(&reviser_device->mutex_power);
 	reviser_device->power_count--;
 
-	if (reviser_device->power_count == 0) {
+	if (reviser_device->power_count < 0) {
+		LOG_ERR("Power count invalid (%d)\n", reviser_device->power_count);
+		ret = -EINVAL;
+		mutex_unlock(&reviser_device->mutex_power);
+		if (ret)
+			reviser_aee_print("count_invalid");
+		return ret;
+	} else if (reviser_device->power_count == 0) {
 
 		ret = apu_device_power_off(REVISER);
 		if (ret < 0)
 			LOG_ERR("PowerON Fail (%d)\n", ret);
-
 	}
 	mutex_unlock(&reviser_device->mutex_power);
 

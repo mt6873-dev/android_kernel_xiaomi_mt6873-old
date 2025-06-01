@@ -1,7 +1,6 @@
 /* pkuphub motion sensor driver
  *
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -91,8 +90,8 @@ static int pickup_gesture_recv_data(struct data_unit_t *event,
 	if (event->flush_action == FLUSH_ACTION)
 		pr_debug("pickup_gesture do not support flush\n");
 	else if (event->flush_action == DATA_ACTION)
-		err = situation_data_report_t(ID_PICK_UP_GESTURE,
-				(uint32_t)event->data[0], (int64_t)event->time_stamp);
+		err = situation_notify_t(ID_PICK_UP_GESTURE,
+				(int64_t)event->time_stamp);
 	return err;
 }
 

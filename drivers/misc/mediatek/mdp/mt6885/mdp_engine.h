@@ -108,6 +108,11 @@ enum CMDQ_ENG_ENUM {
 					 (1LL << CMDQ_ENG_ISP_VIPI) |	\
 					 (1LL << CMDQ_ENG_ISP_LCEI))
 
+#define CMDQ_ENG_SVP_MTEE_GROUP_BITS	((1LL << CMDQ_ENG_MDP_RDMA0) |	\
+					 (1LL << CMDQ_ENG_MDP_RDMA1) |	\
+					 (1LL << CMDQ_ENG_MDP_RDMA2) |	\
+					 (1LL << CMDQ_ENG_MDP_RDMA3))
+
 #define CMDQ_ENG_MDP_GROUP_BITS	((1LL << CMDQ_ENG_MDP_CAMIN) |	\
 				 (1LL << CMDQ_ENG_MDP_CAMIN2) |	\
 				 (1LL << CMDQ_ENG_MDP_CAMIN3) |	\

@@ -670,7 +670,7 @@ ovl_layer_config(enum DISP_MODULE_ENUM module, unsigned int phy_layer,
 	DISP_REG_SET_FIELD(handle, fld, baddr + DISP_REG_OVL_CLRFMT_EXT, value);
 
 	dim_color = gOVL_dim_color == 0xff000000 ?
-		    gOVL_dim_color : cfg->dim_color;
+		    cfg->dim_color : gOVL_dim_color;
 	DISP_REG_SET(handle, DISP_REG_OVL_L0_CLR + Lx_clr_base,
 		     0xff000000 | dim_color);
 
@@ -2323,10 +2323,12 @@ static int ovl_config_l(enum DISP_MODULE_ENUM module,
 		DISP_SLOT_SET(handle, DISPSYS_SLOT_BASE,
 			DISP_SLOT_OVL0_FBDC_BW, (unsigned int)ovl_fbdc_bw);
 
-		/*read last frame BW from ovl*/
+		/*read last frame BW from ovl,debug code*/
+/*
 		DISP_REG_BACKUP(handle, DISPSYS_SLOT_BASE,
 			DISP_SLOT_OVL0_LASTF_BW,
 			baddr + DISP_REG_OVL_GDRDY_PRD_NUM);
+*/
 
 	} else if (module == DISP_MODULE_OVL0_2L) {
 		DISP_SLOT_SET(handle, DISPSYS_SLOT_BASE,
@@ -2334,10 +2336,12 @@ static int ovl_config_l(enum DISP_MODULE_ENUM module,
 		DISP_SLOT_SET(handle, DISPSYS_SLOT_BASE,
 			DISP_SLOT_OVL0_2L_FBDC_BW, (unsigned int)ovl_fbdc_bw);
 
-		/*read last frame BW from ovl*/
+		/*read last frame BW from ovl,debug code*/
+/*
 		DISP_REG_BACKUP(handle, DISPSYS_SLOT_BASE,
 			DISP_SLOT_OVL0_2L_LASTF_BW,
 			baddr + DISP_REG_OVL_GDRDY_PRD_NUM);
+*/
 	}
 
 	return 0;

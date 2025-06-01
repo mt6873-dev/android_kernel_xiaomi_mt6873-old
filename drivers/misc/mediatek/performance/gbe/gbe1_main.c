@@ -163,9 +163,15 @@ static void gbe_ctrl2comp_fstb_poll(struct hlist_head *list)
 
 		gbe_list_iter->runtime_percent =
 			1000ULL *
+#if BITS_PER_LONG == 32
+			div_u64((gbe_list_iter->now_task_runtime -
+			 gbe_list_iter->last_task_runtime),
+			(gbe_list_iter->cur_ts - gbe_list_iter->last_ts));
+#else
 			(gbe_list_iter->now_task_runtime -
 			 gbe_list_iter->last_task_runtime) /
 			(gbe_list_iter->cur_ts - gbe_list_iter->last_ts);
+#endif
 
 		if (gbe_list_iter->runtime_percent)
 			gbe_trace_count(gbe_list_iter->tid,
@@ -215,9 +221,6 @@ static void gbe_notifier_wq_cb(struct work_struct *psWork)
 	struct GBE_NOTIFIER_PUSH_TAG *vpPush =
 		GBE_CONTAINER_OF(psWork,
 				struct GBE_NOTIFIER_PUSH_TAG, sWork);
-
-	if (!vpPush)
-		return;
 
 	switch (vpPush->ePushType) {
 	case GBE_NOTIFIER_RTID:

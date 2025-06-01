@@ -489,6 +489,9 @@ void md_cd_lock_modem_clock_src(int locked)
 		int settle = mt_secure_call(MD_CLOCK_REQUEST,
 				MD_REG_AP_MDSRC_SETTLE, 0, 0, 0, 0, 0);
 
+		if (!(settle > 0 && settle < 10))
+			settle = 3;
+
 		mdelay(settle);
 		ret = mt_secure_call(MD_CLOCK_REQUEST,
 				MD_REG_AP_MDSRC_ACK, 0, 0, 0, 0, 0);
@@ -661,10 +664,25 @@ void __attribute__((weak)) kicker_pbm_by_md(enum pbm_kicker kicker,
 {
 }
 
+#ifdef FEATURE_CLK_BUF
+static void flight_mode_set_by_atf(struct ccci_modem *md,
+		unsigned int flightMode)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_KERNEL_CCCI_CONTROL, MD_FLIGHT_MODE_SET,
+		flightMode, 0, 0, 0, 0, 0, &res);
+
+	CCCI_BOOTUP_LOG(md->index, TAG,
+		"[%s] flag_1=%lu, flag_2=%lu, flag_3=%lu, flag_4=%lu\n",
+		__func__, res.a0, res.a1, res.a2, res.a3);
+}
+#endif
+
 int md_cd_soft_power_off(struct ccci_modem *md, unsigned int mode)
 {
 #ifdef FEATURE_CLK_BUF
-	clk_buf_set_by_flightmode(true);
+	flight_mode_set_by_atf(md, true);
 #endif
 	return 0;
 }
@@ -672,7 +690,7 @@ int md_cd_soft_power_off(struct ccci_modem *md, unsigned int mode)
 int md_cd_soft_power_on(struct ccci_modem *md, unsigned int mode)
 {
 #ifdef FEATURE_CLK_BUF
-	clk_buf_set_by_flightmode(false);
+	flight_mode_set_by_atf(md, false);
 #endif
 	return 0;
 }
@@ -777,7 +795,7 @@ int md_cd_power_on(struct ccci_modem *md)
 	switch (md->index) {
 	case MD_SYS1:
 #ifdef FEATURE_CLK_BUF
-		clk_buf_set_by_flightmode(false);
+		flight_mode_set_by_atf(md, false);
 #endif
 		CCCI_BOOTUP_LOG(md->index, TAG, "enable md sys clk\n");
 		ret = clk_prepare_enable(clk_table[0].clk_ref);
@@ -860,7 +878,7 @@ int md_cd_power_off(struct ccci_modem *md, unsigned int timeout)
 			ccci_read32(infra_ao_base, INFRA_AO_MD_SRCCLKENA));
 		CCCI_BOOTUP_LOG(md->index, TAG, "Call md1_pmic_setting_off\n");
 #ifdef FEATURE_CLK_BUF
-		clk_buf_set_by_flightmode(true);
+		flight_mode_set_by_atf(md, true);
 #endif
 		/* modem topclkgen off setting */
 		md_cd_topclkgen_off(md);

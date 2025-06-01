@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -196,7 +195,7 @@ int mtk_spower_make_table(struct sptab_s *spt, int voltage, int degree,
 		tab[i] = &(all_tab[id]->tab_raw[i]);
 
 	/* get leakage that reads from efuse */
-	wat = spower_lkg_info[tab[0]->leakage_id].value;
+	wat = spower_lkg_info[tab[0]->leakage_id].value / 1000;
 
 	/** lookup tables which the chip type locates to **/
 	for (i = 0; i < spower_raw->table_size; i++) {
@@ -239,10 +238,7 @@ int mtk_spower_make_table(struct sptab_s *spt, int voltage, int degree,
 		/** occupy the free container**/
 		tspt = tab[spower_raw->table_size - 3];
 #else  /* #if defined(EXTER_POLATION) */
-		if (spower_raw->table_size - 1 >= 0)
-			tspt = tab1 = tab2 = tab[spower_raw->table_size - 1];
-		else
-			tspt = tab1 = tab2 = tab[1];
+		tspt = tab1 = tab2 = tab[spower_raw->table_size - 1];
 #endif /* #if defined(EXTER_POLATION) */
 
 		SPOWER_INFO("sptab max tab:%d/%d\n", wat, c[i]);
@@ -528,12 +524,12 @@ int mt_spower_init(void)
 	if (mtSpowerInited == 1)
 		return 0;
 
-	for (i = 0; i < MTK_SPOWER_MAX; i++)
-		tab[i] = kmalloc(sizeof(struct sptab_list), GFP_KERNEL);
-
 	/* avoid side effect from multiple invocation */
 	if (tab_validate(&sptab[0]))
 		return 0;
+
+	for (i = 0; i < MTK_SPOWER_MAX; i++)
+		tab[i] = kmalloc(sizeof(struct sptab_list), GFP_KERNEL);
 
 #ifndef WITHOUT_LKG_EFUSE
 	for (i = 0; i < MTK_LEAKAGE_MAX; i++) {
@@ -636,7 +632,7 @@ int mt_spower_get_leakage(int dev, unsigned int vol, int deg)
 {
 	int ret;
 
-	if (dev < 0 || !tab_validate(&sptab[dev]))
+	if (dev >= MTK_SPOWER_MAX || dev < 0 || !tab_validate(&sptab[dev]))
 		return 0;
 
 	if (vol > mV(&sptab[dev], VSIZE - 1))
@@ -661,10 +657,7 @@ int mt_spower_get_leakage_uW(int dev, unsigned int vol, int deg)
 {
 	int ret;
 
-	if (dev < 0)
-		return 0;
-
-	if (!tab_validate(&sptab[dev]))
+	if (dev >= MTK_SPOWER_MAX || dev < 0 || !tab_validate(&sptab[dev]))
 		return 0;
 
 	if (vol > mV(&sptab[dev], VSIZE - 1))

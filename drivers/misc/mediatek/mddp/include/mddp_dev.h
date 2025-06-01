@@ -3,7 +3,6 @@
  * mddp_dev.h - Structure/API of MDDP device node control.
  *
  * Copyright (c) 2020 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #ifndef __MDDP_DEV_H
@@ -16,9 +15,7 @@
 // -----------------------------------------------------------------------------
 #define MDDP_DETAILED_STATE_ENABLE 19283746
 #define MDDP_DETAILED_STATE_DISABLE 0
-#ifdef CONFIG_MTK_ENG_BUILD
-#define MDDP_EM_SUPPORT	1                   /**< Engineer mode support */
-#endif
+#define MDDP_EM_SUPPORT	0                   /**< Engineer mode support */
 
 //------------------------------------------------------------------------------
 // Public functions.

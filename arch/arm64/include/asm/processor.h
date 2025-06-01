@@ -71,9 +71,9 @@
 
 #define STACK_TOP_MAX		TASK_SIZE_64
 #ifdef CONFIG_COMPAT
-#define AARCH32_KUSER_HELPERS_BASE 0xffff0000
+#define AARCH32_VECTORS_BASE	0xffff0000
 #define STACK_TOP		(test_thread_flag(TIF_32BIT) ? \
-				AARCH32_KUSER_HELPERS_BASE : STACK_TOP_MAX)
+				AARCH32_VECTORS_BASE : STACK_TOP_MAX)
 #else
 #define STACK_TOP		STACK_TOP_MAX
 #endif /* CONFIG_COMPAT */
@@ -143,9 +143,8 @@ void tls_preserve_current_state(void);
 
 static inline void start_thread_common(struct pt_regs *regs, unsigned long pc)
 {
-	s32 previous_syscall = regs->syscallno;
 	memset(regs, 0, sizeof(*regs));
-	regs->syscallno = previous_syscall;
+	forget_syscall(regs);
 	regs->pc = pc;
 }
 

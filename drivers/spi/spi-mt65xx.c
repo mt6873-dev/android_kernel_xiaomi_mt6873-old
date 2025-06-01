@@ -47,6 +47,7 @@
 #define SPI_CFG0_SCK_LOW_OFFSET           8
 #define SPI_CFG0_CS_HOLD_OFFSET           16
 #define SPI_CFG0_CS_SETUP_OFFSET          24
+#define SPI_ADJUST_CFG0_SCK_LOW_OFFSET    16
 #define SPI_ADJUST_CFG0_CS_HOLD_OFFSET    0
 #define SPI_ADJUST_CFG0_CS_SETUP_OFFSET   16
 
@@ -58,8 +59,6 @@
 #define SPI_CFG1_CS_IDLE_MASK             0xff
 #define SPI_CFG1_PACKET_LOOP_MASK         0xff00
 #define SPI_CFG1_PACKET_LENGTH_MASK       0x3ff0000
-#define SPI_CFG2_SCK_HIGH_OFFSET          0
-#define SPI_CFG2_SCK_LOW_OFFSET           16
 
 #define SPI_CMD_ACT                  BIT(0)
 #define SPI_CMD_RESUME               BIT(1)
@@ -116,6 +115,7 @@ struct mtk_spi {
 	u32 tx_sgl_len, rx_sgl_len;
 	const struct mtk_spi_compatible *dev_comp;
 	struct pm_qos_request spi_qos_request;
+	u32 spi_clk_hz;
 };
 
 static const struct mtk_spi_compatible mtk_common_compat;
@@ -300,11 +300,16 @@ static void mtk_spi_reset(struct mtk_spi *mdata)
 static int mtk_spi_prepare_message(struct spi_master *master,
 				   struct spi_message *msg)
 {
+	int ret;
 	u16 cpha, cpol;
 	u32 reg_val;
 	struct spi_device *spi = msg->spi;
 	struct mtk_chip_config *chip_config = spi->controller_data;
 	struct mtk_spi *mdata = spi_master_get_devdata(master);
+
+	ret = clk_enable(mdata->spi_clk);
+	if (ret)
+		return ret;
 
 	cpha = spi->mode & SPI_CPHA ? 1 : 0;
 	cpol = spi->mode & SPI_CPOL ? 1 : 0;
@@ -373,13 +378,33 @@ static int mtk_spi_prepare_message(struct spi_master *master,
 		writel(mdata->pad_sel[spi->chip_select],
 		       mdata->base + SPI_PAD_SEL_REG);
 
+	reg_val = readl(mdata->base + SPI_CFG1_REG);
+	reg_val |= ((chip_config->tick_delay & 0x1FFFFFFF) <<
+				SPI_CFG1_GET_TICK_DLY_OFFSET);
+	writel(reg_val, mdata->base + SPI_CFG1_REG);
+	return 0;
+}
+
+static int mtk_spi_unprepare_message(struct spi_controller *ctlr,
+					struct spi_message *message)
+{
+	struct mtk_spi *mdata = spi_master_get_devdata(ctlr);
+
+	clk_disable(mdata->spi_clk);
 	return 0;
 }
 
 static void mtk_spi_set_cs(struct spi_device *spi, bool enable)
 {
 	u32 reg_val;
+	int ret;
 	struct mtk_spi *mdata = spi_master_get_devdata(spi->master);
+
+	ret = clk_enable(mdata->spi_clk);
+	if (ret < 0) {
+		pr_info("failed to enable spi_clk (%d)\n", ret);
+		return;
+	}
 
 	if (spi->mode & SPI_CS_HIGH)
 		enable = !enable;
@@ -394,19 +419,19 @@ static void mtk_spi_set_cs(struct spi_device *spi, bool enable)
 		mdata->state = MTK_SPI_IDLE;
 		mtk_spi_reset(mdata);
 	}
+	clk_disable(mdata->spi_clk);
 }
 
 static void mtk_spi_prepare_transfer(struct spi_master *master,
 			struct spi_transfer *xfer, struct spi_device *spi)
 {
-	u32 spi_clk_hz, div, sck_time, cs_time, reg_val;
+	u32 div, sck_time, cs_time, reg_val = 0;
 	struct mtk_spi *mdata = spi_master_get_devdata(master);
 	u32 cs_setuptime, cs_holdtime, cs_idletime = 0;
 	struct mtk_chip_config *chip_config = spi->controller_data;
 
-	spi_clk_hz = clk_get_rate(mdata->spi_clk);
-	if (xfer->speed_hz < spi_clk_hz / 2)
-		div = DIV_ROUND_UP(spi_clk_hz, xfer->speed_hz);
+	if (xfer->speed_hz < mdata->spi_clk_hz / 2)
+		div = DIV_ROUND_UP(mdata->spi_clk_hz, xfer->speed_hz);
 	else
 		div = 1;
 
@@ -429,18 +454,20 @@ static void mtk_spi_prepare_transfer(struct spi_master *master,
 		cs_idletime = cs_time;
 
 	if (mdata->dev_comp->enhance_timing) {
-		reg_val = (((sck_time - 1) & 0xffff)
-			   << SPI_CFG2_SCK_HIGH_OFFSET);
 		reg_val |= (((sck_time - 1) & 0xffff)
-			   << SPI_CFG2_SCK_LOW_OFFSET);
+			   << SPI_CFG0_SCK_HIGH_OFFSET);
+		reg_val |= (((sck_time - 1) & 0xffff)
+			   << SPI_ADJUST_CFG0_SCK_LOW_OFFSET);
 		writel(reg_val, mdata->base + SPI_CFG2_REG);
-		reg_val = (((cs_time - 1) & 0xffff)
+
+		reg_val = 0;
+		reg_val |= (((cs_holdtime - 1) & 0xffff)
 			   << SPI_ADJUST_CFG0_CS_HOLD_OFFSET);
 		reg_val |= (((cs_setuptime - 1) & 0xffff)
 			   << SPI_ADJUST_CFG0_CS_SETUP_OFFSET);
 		writel(reg_val, mdata->base + SPI_CFG0_REG);
 	} else {
-		reg_val = (((sck_time - 1) & 0xff)
+		reg_val |= (((sck_time - 1) & 0xff)
 			   << SPI_CFG0_SCK_HIGH_OFFSET);
 		reg_val |= (((sck_time - 1) & 0xff) <<
 			SPI_CFG0_SCK_LOW_OFFSET);
@@ -565,15 +592,14 @@ static int mtk_spi_fifo_transfer(struct spi_master *master,
 	mtk_spi_prepare_transfer(master, xfer, spi);
 	mtk_spi_setup_packet(master);
 
-	if (xfer->tx_buf) {
-		cnt = xfer->len / 4;
-		iowrite32_rep(mdata->base + SPI_TX_DATA_REG, xfer->tx_buf, cnt);
-		remainder = xfer->len % 4;
-		if (remainder > 0) {
-			reg_val = 0;
-			memcpy(&reg_val, xfer->tx_buf + (cnt * 4), remainder);
-			writel(reg_val, mdata->base + SPI_TX_DATA_REG);
-		}
+	cnt = xfer->len / 4;
+	iowrite32_rep(mdata->base + SPI_TX_DATA_REG, xfer->tx_buf, cnt);
+
+	remainder = xfer->len % 4;
+	if (remainder > 0) {
+		reg_val = 0;
+		memcpy(&reg_val, xfer->tx_buf + (cnt * 4), remainder);
+		writel(reg_val, mdata->base + SPI_TX_DATA_REG);
 	}
 
 	spi_debug("spi setting Done.Dump reg before Transfer start:\n");
@@ -687,7 +713,7 @@ static irqreturn_t mtk_spi_interrupt(int irq, void *dev_id)
 	else
 		mdata->state = MTK_SPI_IDLE;
 
-	if (!master->can_dma(master, NULL, trans)) {
+	if (!master->can_dma(master, master->cur_msg->spi, trans)) {
 		if (trans->rx_buf) {
 			cnt = mdata->xfer_len / 4;
 			ioread32_rep(mdata->base + SPI_RX_DATA_REG,
@@ -788,12 +814,13 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	master->auto_runtime_pm = true;
+	master->auto_runtime_pm = false;
 	master->dev.of_node = pdev->dev.of_node;
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
 	master->set_cs = mtk_spi_set_cs;
 	master->prepare_message = mtk_spi_prepare_message;
+	master->unprepare_message = mtk_spi_unprepare_message;
 	master->transfer_one = mtk_spi_transfer_one;
 	master->can_dma = mtk_spi_can_dma;
 	master->setup = mtk_spi_setup;
@@ -857,9 +884,6 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		}
 	}
 
-	pm_qos_add_request(&mdata->spi_qos_request, PM_QOS_CPU_DMA_LATENCY,
-		PM_QOS_DEFAULT_VALUE);
-
 	platform_set_drvdata(pdev, master);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -886,7 +910,8 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 
 	ret = devm_request_irq(&pdev->dev, irq, mtk_spi_interrupt,
-			       IRQF_TRIGGER_NONE, dev_name(&pdev->dev), master);
+			       IRQF_TRIGGER_NONE | IRQF_FORCE_RESUME | IRQF_NO_SUSPEND,
+				   dev_name(&pdev->dev), master);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register irq (%d)\n", ret);
 		goto err_put_master;
@@ -913,7 +938,13 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		goto err_put_master;
 	}
 
-	ret = clk_prepare_enable(mdata->spi_clk);
+	ret = clk_prepare(mdata->spi_clk);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to prepare spi_clk (%d)\n", ret);
+		goto err_put_master;
+	}
+
+	ret = clk_enable(mdata->spi_clk);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to enable spi_clk (%d)\n", ret);
 		goto err_put_master;
@@ -922,19 +953,12 @@ static int mtk_spi_probe(struct platform_device *pdev)
 	ret = clk_set_parent(mdata->sel_clk, mdata->parent_clk);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to clk_set_parent (%d)\n", ret);
-		clk_disable_unprepare(mdata->spi_clk);
+		clk_disable(mdata->spi_clk);
 		goto err_put_master;
 	}
 
-	clk_disable_unprepare(mdata->spi_clk);
-
-	pm_runtime_enable(&pdev->dev);
-
-	ret = devm_spi_register_master(&pdev->dev, master);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to register master (%d)\n", ret);
-		goto err_disable_runtime_pm;
-	}
+	mdata->spi_clk_hz = clk_get_rate(mdata->spi_clk);
+	clk_disable(mdata->spi_clk);
 
 	if (mdata->dev_comp->need_pad_sel) {
 		if (mdata->pad_num != master->num_chipselect) {
@@ -981,6 +1005,14 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		dev_notice(&pdev->dev, "SPI dma_set_mask(%d) failed, ret:%d\n",
 			   addr_bits, ret);
 
+	pm_qos_add_request(&mdata->spi_qos_request, PM_QOS_CPU_DMA_LATENCY,
+		PM_QOS_DEFAULT_VALUE);
+
+	ret = devm_spi_register_master(&pdev->dev, master);
+	if (ret) {
+		dev_notice(&pdev->dev, "failed to register master (%d)\n", ret);
+		goto err_disable_runtime_pm;
+	}
 	return 0;
 
 err_disable_runtime_pm:
@@ -1016,7 +1048,7 @@ static int mtk_spi_suspend(struct device *dev)
 		return ret;
 
 	if (!pm_runtime_suspended(dev))
-		clk_disable_unprepare(mdata->spi_clk);
+		clk_disable(mdata->spi_clk);
 
 	ret = pinctrl_pm_select_sleep_state(dev);
 	if (ret < 0)
@@ -1036,7 +1068,7 @@ static int mtk_spi_resume(struct device *dev)
 		dev_notice(dev, "failed to set pin default_state (%d)\n", ret);
 
 	if (!pm_runtime_suspended(dev)) {
-		ret = clk_prepare_enable(mdata->spi_clk);
+		ret = clk_enable(mdata->spi_clk);
 		if (ret < 0) {
 			dev_err(dev, "failed to enable spi_clk (%d)\n", ret);
 			return ret;
@@ -1045,7 +1077,7 @@ static int mtk_spi_resume(struct device *dev)
 
 	ret = spi_master_resume(master);
 	if (ret < 0)
-		clk_disable_unprepare(mdata->spi_clk);
+		clk_disable(mdata->spi_clk);
 
 	return ret;
 }
@@ -1057,7 +1089,7 @@ static int mtk_spi_runtime_suspend(struct device *dev)
 	struct spi_master *master = dev_get_drvdata(dev);
 	struct mtk_spi *mdata = spi_master_get_devdata(master);
 
-	clk_disable_unprepare(mdata->spi_clk);
+	clk_disable(mdata->spi_clk);
 
 	return 0;
 }
@@ -1068,7 +1100,7 @@ static int mtk_spi_runtime_resume(struct device *dev)
 	struct mtk_spi *mdata = spi_master_get_devdata(master);
 	int ret;
 
-	ret = clk_prepare_enable(mdata->spi_clk);
+	ret = clk_enable(mdata->spi_clk);
 	if (ret < 0) {
 		dev_err(dev, "failed to enable spi_clk (%d)\n", ret);
 		return ret;
@@ -1087,7 +1119,6 @@ static const struct dev_pm_ops mtk_spi_pm = {
 static struct platform_driver mtk_spi_driver = {
 	.driver = {
 		.name = "mtk-spi",
-		.pm	= &mtk_spi_pm,
 		.of_match_table = mtk_spi_of_match,
 	},
 	.probe = mtk_spi_probe,

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -30,7 +29,6 @@
 struct usbotg_boost {
 	struct platform_device *pdev;
 	struct charger_device *primary_charger;
-	struct charger_device *secondary_charger;
 #if CONFIG_MTK_GAUGE_VERSION == 30
 	struct alarm otg_timer;
 	struct timespec endtime;
@@ -118,16 +116,17 @@ int usb_otg_set_vbus(int is_on)
 
 #if CONFIG_MTK_GAUGE_VERSION == 30
 	if (is_on) {
-		charger_dev_enable_otg(g_info->secondary_charger, true);
 		charger_dev_enable_otg(g_info->primary_charger, true);
 		charger_dev_set_boost_current_limit(g_info->primary_charger,
-			1800000);
-		charger_dev_kick_wdt(g_info->primary_charger);
-		enable_boost_polling(true);
+			1500000);
+		if (g_info->polling_interval) {
+			charger_dev_kick_wdt(g_info->primary_charger);
+			enable_boost_polling(true);
+		}
 	} else {
 		charger_dev_enable_otg(g_info->primary_charger, false);
-		charger_dev_enable_otg(g_info->secondary_charger, false);
-		enable_boost_polling(false);
+		if (g_info->polling_interval)
+			enable_boost_polling(false);
 	}
 #else
 	if (is_on) {
@@ -176,20 +175,16 @@ static int usbotg_boost_probe(struct platform_device *pdev)
 		pr_info("%s: get primary charger device failed\n", __func__);
 		return -ENODEV;
 	}
-	info->secondary_charger = get_charger_by_name("secondary_chg");
-	if (!info->secondary_charger) {
-		pr_info("%s: get secondary charger device failed\n", __func__);
-		return -ENODEV;
-	}
 
 #if CONFIG_MTK_GAUGE_VERSION == 30
 	alarm_init(&info->otg_timer, ALARM_BOOTTIME,
 		usbotg_alarm_timer_func);
 	if (of_property_read_u32(node, "boost_period",
-		(u32 *) &info->polling_interval))
-		return -EINVAL;
+		(u32 *) &info->polling_interval)) {
+		pr_info("%s: get boost_period failed\n", __func__);
+		info->polling_interval = 0;
+	}
 
-	info->polling_interval = 30;
 	info->boost_workq = create_singlethread_workqueue("boost_workq");
 	INIT_WORK(&info->kick_work, usbotg_boost_kick_work);
 #endif

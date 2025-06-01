@@ -79,6 +79,7 @@ unsigned int scp_enable[SCP_CORE_TOTAL];
 /* scp dvfs variable*/
 unsigned int scp_expected_freq;
 unsigned int scp_current_freq;
+unsigned int scp_dvfs_cali_ready;
 
 /*scp awake variable*/
 int scp_awake_counts[SCP_CORE_TOTAL];
@@ -127,7 +128,9 @@ static struct timer_list scp_ready_timer[SCP_CORE_TOTAL];
 #endif
 static struct scp_work_struct scp_A_notify_work;
 
+#if SCP_BOOT_TIME_OUT_MONITOR
 static unsigned int scp_timeout_times;
+#endif
 
 static DEFINE_MUTEX(scp_A_notify_mutex);
 static DEFINE_MUTEX(scp_feature_mutex);
@@ -393,6 +396,7 @@ static void scp_A_notify_ws(struct work_struct *ws)
 		scp_pll_ctrl_set(PLL_DISABLE, CLK_26M);
 #endif
 
+		scp_dvfs_cali_ready = 1;
 		pr_debug("[SCP] notify blocking call\n");
 		blocking_notifier_call_chain(&scp_A_notifier_list
 			, SCP_EVENT_READY, NULL);
@@ -528,7 +532,7 @@ static int scp_A_ready_ipi_handler(unsigned int id, void *prdata, void *data,
  * @param data: ipi data
  * @param len:  length of ipi data
  */
-static void scp_err_info_handler(int id, void *prdata, void *data,
+static int scp_err_info_handler(unsigned int id, void *prdata, void *data,
 				 unsigned int len)
 {
 	struct error_info *info = (struct error_info *)data;
@@ -537,7 +541,7 @@ static void scp_err_info_handler(int id, void *prdata, void *data,
 		pr_notice("[SCP] error: incorrect size %d of error_info\n",
 				len);
 		WARN_ON(1);
-		return;
+		return 0;
 	}
 
 	/* Ensure the context[] is terminated by the NULL character. */
@@ -550,6 +554,8 @@ static void scp_err_info_handler(int id, void *prdata, void *data,
 		report_hub_dmd(info->case_id, info->sensor_id, info->context);
 	else
 		pr_debug("[SCP] warning: report_hub_dmd() not defined.\n");
+
+	return 0;
 }
 
 
@@ -1125,8 +1131,13 @@ static int scp_reserve_memory_ioremap(void)
 void set_scp_mpu(void)
 {
 	struct emimpu_region_t md_region;
+	int ret;
 
-	mtk_emimpu_init_region(&md_region, MPU_REGION_ID_SCP_SMEM);
+	ret = mtk_emimpu_init_region(&md_region, MPU_REGION_ID_SCP_SMEM);
+	if (ret) {
+		pr_err("[SCP]mtk_emimpu_init_region failed\n");
+		return;
+	}
 	mtk_emimpu_set_addr(&md_region, scp_mem_base_phys,
 		scp_mem_base_phys + scp_mem_size - 1);
 	mtk_emimpu_set_apc(&md_region, MPU_DOMAIN_D0,
@@ -1148,6 +1159,12 @@ void scp_register_feature(enum feature_id id)
 	if (!scp_ready[SCP_A_ID]) {
 		pr_debug("[SCP] %s: not ready, scp=%u\n", __func__,
 			scp_ready[SCP_A_ID]);
+		return;
+	}
+	/* prevent from access when scp dvfs cali isn't done */
+	if (!scp_dvfs_cali_ready) {
+		pr_debug("[SCP] %s: dvfs cali not ready, scp_dvfs_cali=%u\n",
+		__func__, scp_dvfs_cali_ready);
 		return;
 	}
 
@@ -1196,6 +1213,12 @@ void scp_deregister_feature(enum feature_id id)
 	if (!scp_ready[SCP_A_ID]) {
 		pr_debug("[SCP] %s:not ready, scp=%u\n", __func__,
 			scp_ready[SCP_A_ID]);
+		return;
+	}
+	/* prevent from access when scp dvfs cali isn't done */
+	if (!scp_dvfs_cali_ready) {
+		pr_debug("[SCP] %s: dvfs cali not ready, scp_dvfs_cali=%u\n",
+		__func__, scp_dvfs_cali_ready);
 		return;
 	}
 
@@ -1380,8 +1403,10 @@ void scp_reset_wait_timeout(void)
 		mdelay(20);
 	}
 
-	if (timeout == 0)
+	if (timeout < 0) {
 		pr_notice("[SCP] reset timeout, still reset scp\n");
+		pr_notice("[SCP] core0_status = %x", readl(R_CORE0_STATUS));
+	}
 
 }
 
@@ -1408,6 +1433,7 @@ void scp_sys_reset_ws(struct work_struct *ws)
 	 *   SCP_PLATFORM_READY = 1,
 	 */
 	scp_ready[SCP_A_ID] = 0;
+	scp_dvfs_cali_ready = 0;
 
 	/* wake lock AP*/
 	__pm_stay_awake(&scp_reset_lock);
@@ -1806,6 +1832,7 @@ static int __init scp_init(void)
 		scp_enable[i] = 0;
 		scp_ready[i] = 0;
 	}
+	scp_dvfs_cali_ready = 0;
 
 #if SCP_DVFS_INIT_ENABLE
 	scp_dvfs_init();

@@ -101,8 +101,37 @@ int secmem_fr_set_svp_region(u64 pa, u32 size, int remote_region_type)
 	cmd_params.param1 = size;
 	cmd_params.param2 = remote_region_type;
 
-	if (pa == 0 & size == 0)
+	if (pa == 0 && size == 0)
 		return TMEM_OK;
+
+#ifdef TCORE_UT_TESTS_SUPPORT
+	if (is_multi_type_alloc_multithread_test_locked()) {
+		pr_debug("%s:%d return for UT purpose!\n", __func__, __LINE__);
+		return TMEM_OK;
+	}
+#endif
+
+	return tee_directly_invoke_cmd(&cmd_params);
+}
+
+int secmem_fr_set_wfd_region(u64 pa, u32 size, int remote_region_type)
+{
+	struct trusted_driver_cmd_params cmd_params = {0};
+
+	cmd_params.cmd = CMD_SEC_MEM_SET_WFD_REGION;
+	cmd_params.param0 = pa;
+	cmd_params.param1 = size;
+	cmd_params.param2 = remote_region_type;
+
+	if (pa == 0 && size == 0)
+		return TMEM_OK;
+
+#ifdef TCORE_UT_TESTS_SUPPORT
+	if (is_multi_type_alloc_multithread_test_locked()) {
+		pr_debug("%s:%d return for UT purpose!\n", __func__, __LINE__);
+		return TMEM_OK;
+	}
+#endif
 
 	return tee_directly_invoke_cmd(&cmd_params);
 }
@@ -118,6 +147,9 @@ int secmem_fr_set_prot_shared_region(u64 pa, u32 size, int remote_region_type)
 	cmd_params.param0 = pa;
 	cmd_params.param1 = size;
 	cmd_params.param2 = remote_region_type;
+
+	if (pa == 0 && size == 0)
+		return TMEM_OK;
 
 #ifdef TCORE_UT_TESTS_SUPPORT
 	if (is_multi_type_alloc_multithread_test_locked()) {

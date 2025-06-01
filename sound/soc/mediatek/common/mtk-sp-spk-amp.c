@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 //
 // Copyright (C) 2018 MediaTek Inc.
-// Copyright (C) 2021 XiaoMi, Inc.
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -26,28 +25,12 @@
 #ifdef CONFIG_SND_SOC_MT6660
 #include "../../codecs/mt6660.h"
 #endif /* CONFIG_SND_SOC_MT6660 */
+#ifdef CONFIG_SND_SOC_RT5512
+#include "../../codecs/rt5512.h"
+#endif /* CONFIG_SND_SOC_RT5512 */
 
 #ifdef CONFIG_SND_SOC_TFA9874
 #include "../../codecs/tfa98xx/inc/tfa98xx_ext.h"
-#endif
-
-#ifdef CONFIG_SND_SOC_CS35L41
-#include "../../codecs/cs35l41/cs35l41_ext.h"
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-#define CS35L41_SPEAKER_NAME "speaker_amp.7-0040"
-#define CS35L41_RECEIVER_NAME "speaker_amp.7-0041"
-static struct snd_soc_dai_link_component cs35l41_dai_link_component[] =
-{
-	{
-		.name= CS35L41_SPEAKER_NAME,
-		.dai_name="cs35l41-pcm",
-	},
-	{
-		.name= CS35L41_RECEIVER_NAME,
-		.dai_name="cs35l41-pcm",
-	},
-};
-#endif
 #endif
 
 #ifdef CONFIG_SND_SOC_AW87339
@@ -56,14 +39,7 @@ static struct snd_soc_dai_link_component cs35l41_dai_link_component[] =
 
 #define MTK_SPK_NAME "Speaker Codec"
 #define MTK_SPK_REF_NAME "Speaker Codec Ref"
-
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-static unsigned int mtk_spk_type=MTK_SPK_NOT_SMARTPA;
-static unsigned int mtk_spk_cnt=0;
-#else
 static unsigned int mtk_spk_type;
-#endif
-
 static int mtk_spk_i2s_out, mtk_spk_i2s_in;
 static struct mtk_spk_i2c_ctrl mtk_spk_list[MTK_SPK_TYPE_NUM] = {
 	[MTK_SPK_NOT_SMARTPA] = {
@@ -87,6 +63,14 @@ static struct mtk_spk_i2c_ctrl mtk_spk_list[MTK_SPK_TYPE_NUM] = {
 		.codec_name = "MT6660_MT_0",
 	},
 #endif /* CONFIG_SND_SOC_MT6660 */
+#ifdef CONFIG_SND_SOC_RT5512
+	[MTK_SPK_MEDIATEK_RT5512] = {
+		.i2c_probe = rt5512_i2c_probe,
+		.i2c_remove = rt5512_i2c_remove,
+		.codec_dai_name = "rt5512-aif",
+		.codec_name = "RT5512_MT_0",
+	},
+#endif /* CONFIG_SND_SOC_RT5512 */
 
 #ifdef CONFIG_SND_SOC_TFA9874
 	[MTK_SPK_NXP_TFA98XX] = {
@@ -95,20 +79,7 @@ static struct mtk_spk_i2c_ctrl mtk_spk_list[MTK_SPK_TYPE_NUM] = {
 		.codec_dai_name = "tfa98xx-aif",
 		.codec_name = "tfa98xx",
 	},
-#endif /* CONFIG_SND_SOC_MT6660 */
-
-#ifdef CONFIG_SND_SOC_CS35L41
-	[MTK_SPK_CS_CS35L41] = {
-		.i2c_probe = cs35l41_i2c_probe,
-		.i2c_remove = cs35l41_i2c_remove,
-		.codec_dai_name = "cs35l41-pcm",
-		.codec_name = "cs35l41",
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-		.codecs = cs35l41_dai_link_component,
-		.num_codecs = ARRAY_SIZE(cs35l41_dai_link_component),
-#endif
-	},
-#endif
+#endif /* CONFIG_SND_SOC_TFA9874 */
 };
 
 static int mtk_spk_i2c_probe(struct i2c_client *client,
@@ -117,10 +88,8 @@ static int mtk_spk_i2c_probe(struct i2c_client *client,
 	int i, ret = 0;
 
 	dev_info(&client->dev, "%s()\n", __func__);
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-#else
+
 	mtk_spk_type = MTK_SPK_NOT_SMARTPA;
-#endif
 	for (i = 0; i < MTK_SPK_TYPE_NUM; i++) {
 		if (!mtk_spk_list[i].i2c_probe)
 			continue;
@@ -128,19 +97,8 @@ static int mtk_spk_i2c_probe(struct i2c_client *client,
 		ret = mtk_spk_list[i].i2c_probe(client, id);
 		if (ret)
 			continue;
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-		mtk_spk_cnt++;
-		if (mtk_spk_cnt > 1)
-		{
-			if (mtk_spk_type != i)
-				pr_err("%s cnt: %d, type: %d, i:%d\n", __func__, mtk_spk_cnt, mtk_spk_type, i);
-			else
-				pr_info("%s cnt: %d, type: %d\n", __func__, mtk_spk_cnt, mtk_spk_type);
-		}
-#endif
 
 		mtk_spk_type = i;
-		dev_info(&client->dev, "mtk_spk_type is %d\n", mtk_spk_type);
 		break;
 	}
 
@@ -418,27 +376,10 @@ int mtk_spk_update_dai_link(struct snd_soc_card *card,
 	/* update spk codec dai name and codec name */
 	dai_link = &card->dai_link[spk_dai_link_idx];
 	dai_link->name = MTK_SPK_NAME;
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-	if (mtk_spk_cnt > 1)
-	{
-		dai_link->codecs =
-			mtk_spk_list[mtk_spk_type].codecs;
-		dai_link->num_codecs =
-			mtk_spk_list[mtk_spk_type].num_codecs;
-	}
-	else
-	{
-		dai_link->codec_dai_name =
-			mtk_spk_list[mtk_spk_type].codec_dai_name;
-		dai_link->codec_name =
-			mtk_spk_list[mtk_spk_type].codec_name;
-	}
-#else
 	dai_link->codec_dai_name =
 		mtk_spk_list[mtk_spk_type].codec_dai_name;
 	dai_link->codec_name =
 		mtk_spk_list[mtk_spk_type].codec_name;
-#endif
 	dai_link->ignore_pmdown_time = 1;
 	if (i2s_mck == mtk_spk_i2s_out)
 		dai_link->ops = i2s_ops;
@@ -452,27 +393,10 @@ int mtk_spk_update_dai_link(struct snd_soc_card *card,
 
 	dai_link = &card->dai_link[spk_ref_dai_link_idx];
 	dai_link->name = MTK_SPK_REF_NAME;
-#ifdef CONFIG_SND_SOC_CS35L41_J10
-	if (mtk_spk_cnt > 1)
-	{
-		dai_link->codecs =
-			mtk_spk_list[mtk_spk_type].codecs;
-		dai_link->num_codecs =
-			mtk_spk_list[mtk_spk_type].num_codecs;
-	}
-	else
-	{
-		dai_link->codec_dai_name =
-			mtk_spk_list[mtk_spk_type].codec_dai_name;
-		dai_link->codec_name =
-			mtk_spk_list[mtk_spk_type].codec_name;
-	}
-#else
 	dai_link->codec_dai_name =
 		mtk_spk_list[mtk_spk_type].codec_dai_name;
 	dai_link->codec_name =
 		mtk_spk_list[mtk_spk_type].codec_name;
-#endif
 	dai_link->ignore_pmdown_time = 1;
 	if (i2s_mck == mtk_spk_i2s_in)
 		dai_link->ops = i2s_ops;
@@ -531,8 +455,7 @@ int mtk_spk_recv_ipi_buf_from_dsp(int8_t *buffer,
 EXPORT_SYMBOL(mtk_spk_recv_ipi_buf_from_dsp);
 
 static const struct i2c_device_id mtk_spk_i2c_id[] = {
-	/*{ "tfa98xx", 0},*/
-	{ "cs35l41", 0},
+	{ "tfa98xx", 0},
 	{ "speaker_amp", 0},
 	{}
 };
@@ -540,8 +463,7 @@ MODULE_DEVICE_TABLE(i2c, mtk_spk_i2c_id);
 
 #ifdef CONFIG_OF
 static const struct of_device_id mtk_spk_match_table[] = {
-	/*{.compatible = "nxp,tfa98xx",},*/
-	{.compatible = "cirrus,cs35l41",},
+	{.compatible = "nxp,tfa98xx",},
 	{.compatible = "mediatek,speaker_amp",},
 	{},
 };

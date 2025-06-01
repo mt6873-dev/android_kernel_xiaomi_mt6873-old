@@ -2,7 +2,6 @@
  * drivers/staging/android/ion/ion_system_heap.c
  *
  * Copyright (C) 2011 Google, Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -32,7 +31,17 @@
 static gfp_t high_order_gfp_flags = (GFP_HIGHUSER | __GFP_ZERO | __GFP_NOWARN |
 				     __GFP_NORETRY) & ~__GFP_RECLAIM;
 static gfp_t low_order_gfp_flags  = (GFP_HIGHUSER | __GFP_ZERO);
-static const unsigned int orders[] = {4, 0};
+static const unsigned int orders[] = {8, 4, 0};
+
+#define ION_DUMP(seq_files, fmt, args...)                    \
+do {                                                         \
+	struct seq_file *file = (struct seq_file *)seq_files;\
+	char *fmat = fmt;                                    \
+	if (file)                                            \
+		seq_printf(file, fmat, ##args);              \
+	else                                                 \
+		printk(fmat, ##args);                        \
+} while (0)
 
 static int order_to_index(unsigned int order)
 {
@@ -93,9 +102,9 @@ static void free_buffer_page(struct ion_system_heap *heap,
 	if (buffer->private_flags & ION_PRIV_FLAG_SHRINKER_FREE) {
 		__free_pages(page, order);
 		if (atomic64_sub_return((1 << order), &page_sz_cnt) < 0) {
-			seq_printf(NULL, "underflow!, total[%ld]free[%lu]\n",
-				   atomic64_read(&page_sz_cnt),
-				   (unsigned long)(1 << order));
+			ION_DUMP(NULL, "underflow!, total[%ld]free[%lu]\n",
+				 atomic64_read(&page_sz_cnt),
+				 (unsigned long)(1 << order));
 			atomic64_set(&page_sz_cnt, 0);
 		}
 		return;
@@ -278,23 +287,23 @@ static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 	for (i = 0; i < NUM_ORDERS; i++) {
 		pool = sys_heap->uncached_pools[i];
 
-		seq_printf(s, "%d order %u highmem pages uncached %lu total\n",
-			   pool->high_count, pool->order,
-			   (PAGE_SIZE << pool->order) * pool->high_count);
-		seq_printf(s, "%d order %u lowmem pages uncached %lu total\n",
-			   pool->low_count, pool->order,
-			   (PAGE_SIZE << pool->order) * pool->low_count);
+		ION_DUMP(s, "%d order %u highmem pages uncached %lu total\n",
+			 pool->high_count, pool->order,
+			 (PAGE_SIZE << pool->order) * pool->high_count);
+		ION_DUMP(s, "%d order %u lowmem pages uncached %lu total\n",
+			 pool->low_count, pool->order,
+			 (PAGE_SIZE << pool->order) * pool->low_count);
 	}
 
 	for (i = 0; i < NUM_ORDERS; i++) {
 		pool = sys_heap->cached_pools[i];
 
-		seq_printf(s, "%d order %u highmem pages cached %lu total\n",
-			   pool->high_count, pool->order,
-			   (PAGE_SIZE << pool->order) * pool->high_count);
-		seq_printf(s, "%d order %u lowmem pages cached %lu total\n",
-			   pool->low_count, pool->order,
-			   (PAGE_SIZE << pool->order) * pool->low_count);
+		ION_DUMP(s, "%d order %u highmem pages cached %lu total\n",
+			 pool->high_count, pool->order,
+			 (PAGE_SIZE << pool->order) * pool->high_count);
+		ION_DUMP(s, "%d order %u lowmem pages cached %lu total\n",
+			 pool->low_count, pool->order,
+			 (PAGE_SIZE << pool->order) * pool->low_count);
 	}
 	return 0;
 }

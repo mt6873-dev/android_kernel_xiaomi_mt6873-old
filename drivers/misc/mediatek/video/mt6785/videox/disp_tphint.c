@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -34,30 +33,24 @@ static void disp_tphint_events(struct input_handle *handle,
 			       const struct input_value *vals,
 			       unsigned int count)
 {
-	const struct input_value *v;
-
 	if (disp_support_arr < 1) {
 		return;
 	}
 
 	/* value 1: down, value 0: up */
-	for (v = vals; v != vals + count; v++) {
-		if (v->type == EV_KEY
-		    && v->code == BTN_TOUCH
-		    && v->value == 1) {
-			if (primary_display_current_fps(REQ_ARR_DFPS, false) >= 60 &&
-			    primary_display_current_fps(HW_CURRENT_FPS, false) >= 60) {
-				return;
-			}
-			atomic_set(&disp_tphint_trigger, 1);
-			wake_up_interruptible(&disp_tphint_wait_queue);
-			DISPMSG("disp_tphint_event, type %d, code %d, value %d!\n",
-				v->type, v->code, v->value);
-			break;
-		}
-	}
+	if (vals->type == EV_KEY
+	    && vals->code == BTN_TOUCH
+	    && vals->value == 1) {
 
-	return;
+		if (primary_display_current_fps(REQ_ARR_DFPS, false) >= 60 &&
+		    primary_display_current_fps(HW_CURRENT_FPS, false) >= 60) {
+			return;
+		}
+		atomic_set(&disp_tphint_trigger, 1);
+		wake_up_interruptible(&disp_tphint_wait_queue);
+		DISPMSG("disp_tphint_event, type %d, code %d, value %d!\n",
+			vals->type, vals->code, vals->value);
+	}
 }
 
 static int disp_tphint_connect(struct input_handler *handler,

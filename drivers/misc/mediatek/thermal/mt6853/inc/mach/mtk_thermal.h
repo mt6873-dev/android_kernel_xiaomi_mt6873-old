@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -45,6 +44,7 @@ struct mt_gpufreq_power_table_info {
  */
 #define CFG_THERM_LVTS				(1)
 #define CFG_THERM_NO_AUXADC			(1)
+#define CFG_THERM_MCU_LVTS				(1)
 
 #if CFG_THERM_LVTS
 #define	CFG_LVTS_DOMINATOR			(1)

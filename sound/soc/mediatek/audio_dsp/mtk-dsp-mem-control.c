@@ -3,7 +3,6 @@
 // mtk-dsp-mem-control.c --  Mediatek ADSP dmemory control
 //
 // Copyright (c) 2018 MediaTek Inc.
-// Copyright (C) 2021 XiaoMi, Inc.
 // Author: Chipeng <Chipeng.chang@mediatek.com>
 
 #include <linux/genalloc.h>
@@ -368,6 +367,7 @@ int dsp_daiid_to_scp_reservedid(int task_dai_id)
 	case AUDIO_TASK_FAST_ID:
 	case AUDIO_TASK_KTV_ID:
 	case AUDIO_TASK_CAPTURE_RAW_ID:
+	case AUDIO_TASK_FM_ADSP_ID:
 		return ADSP_AUDIO_COMMON_MEM_ID;
 #endif
 	default:
@@ -506,20 +506,6 @@ int get_afememul_by_afe_taskid(int task_id)
 }
 
 int get_afememref_by_afe_taskid(int task_id)
-{
-	int ret = 0;
-	struct mtk_adsp_task_attr *task_attr =
-		mtk_get_adsp_task_attr(task_id);
-
-	if (task_id > AUDIO_TASK_DAI_NUM || !task_attr) {
-		pr_info("%s id = %d\n", __func__, task_id);
-		return -1;
-	}
-	ret = task_attr->afe_memif_ref;
-	return ret;
-}
-
-int get_aferefmem_by_afe_taskid(int task_id)
 {
 	int ret = 0;
 	struct mtk_adsp_task_attr *task_attr =

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 
@@ -14,6 +13,8 @@
 #include <linux/rtc.h>
 #include <linux/wakeup_reason.h>
 #include <linux/syscore_ops.h>
+#include <mt6853_cond.h>
+#include <mtk_lpm_module.h>
 
 #include <aee.h>
 #include <mtk_lpm.h>
@@ -45,6 +46,19 @@ struct mt6853_log_helper mt6853_logger_help = {
 	.wakesrc = &mt6853_wake,
 	.cur = 0,
 	.prev = 0,
+};
+
+static char *mt6853_spm_cond_cg_str[PLAT_SPM_COND_MAX] = {
+	[PLAT_SPM_COND_MTCMOS_0]	= "MTCMOS_0",
+	[PLAT_SPM_COND_CG_INFRA_0]	= "INFRA_0",
+	[PLAT_SPM_COND_CG_INFRA_1]	= "INFRA_1",
+	[PLAT_SPM_COND_CG_INFRA_2]	= "INFRA_2",
+	[PLAT_SPM_COND_CG_INFRA_3]	= "INFRA_3",
+	[PLAT_SPM_COND_CG_INFRA_4]	= "INFRA_4",
+	[PLAT_SPM_COND_CG_INFRA_5]	= "INFRA_5",
+	[PLAT_SPM_COND_CG_MMSYS_0]	= "MMSYS_0",
+	[PLAT_SPM_COND_CG_MMSYS_1]	= "MMSYS_1",
+	[PLAT_SPM_COND_CG_MMSYS_2]	= "MMSYS_2",
 };
 
 const char *mt6853_wakesrc_str[32] = {
@@ -319,6 +333,23 @@ static void mt6853_suspend_show_detailed_wakeup_reason
 	}
 }
 
+static void dump_lp_cond(void)
+{
+#define mt6853_DBG_SMC(_id, _act, _rc, _param) ({\
+	(u32) mtk_lpm_smc_spm_dbg(_id, _act, _rc, _param); })
+
+	int i;
+	u32 blkcg;
+
+	for (i = 1 ; i < PLAT_SPM_COND_MAX ; i++) {
+		blkcg = mt6853_DBG_SMC(MT_SPM_DBG_SMC_UID_BLOCK_DETAIL, MT_LPM_SMC_ACT_GET, 0, i);
+		if (blkcg != 0)
+			printk_deferred("suspend warning: CG: %6s = 0x%08lx\n"
+				, mt6853_spm_cond_cg_str[i], blkcg);
+
+	}
+}
+
 static void mt6853_suspend_spm_rsc_req_check
 	(struct mt6853_spm_wake_status *wakesta)
 {
@@ -397,10 +428,11 @@ static u32 is_blocked_cnt;
 			LOG_BUF_SIZE - log_size, "apu ");
 
 	src_req = plat_mmio_read(SPM_SRC_REQ);
-	if (src_req & 0x9B)
+	if (src_req & 0x9B) {
+		dump_lp_cond();
 		log_size += scnprintf(log_buf + log_size,
 			LOG_BUF_SIZE - log_size, "spm ");
-
+	}
 	WARN_ON(strlen(log_buf) >= LOG_BUF_SIZE);
 
 	printk_deferred("[name:spm&][SPM] %s", log_buf);
@@ -779,8 +811,10 @@ int __init mt6853_logger_init(void)
 	mtk_lpm_sysfs_root_entry_create();
 	mt6853_logger_timer_debugfs_init();
 
+	preempt_disable();
 	dev = cpuidle_get_device();
 	drv = cpuidle_get_cpu_driver(dev);
+	preempt_enable();
 	mt6853_logger_fired.state_index = -1;
 
 	if (drv) {
@@ -810,3 +844,4 @@ int __init mt6853_logger_init(void)
 	return 0;
 }
 late_initcall_sync(mt6853_logger_init);
+

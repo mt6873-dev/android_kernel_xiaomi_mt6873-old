@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -97,6 +96,11 @@ GED_ERROR ged_ge_init(void)
 
 	gPoolCache = kmem_cache_create("gralloc_extra",
 		sizeof(struct GEEntry), 0, flags, NULL);
+
+	if (!gPoolCache) {
+		GED_PDEBUG("kmem_cache_create fail\n");
+		err = GED_ERROR_FAIL;
+	}
 
 	return err;
 }

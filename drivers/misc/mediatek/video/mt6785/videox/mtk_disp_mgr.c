@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1065,16 +1064,16 @@ long __frame_config(unsigned long arg)
 		goto error1;
 	}
 
+	if (disp_validate_ioctl_params(cfg)) {
+		ret = -EINVAL;
+		goto error1;
+	}
+
 	cfg->setter = SESSION_USER_HWC;
 
 	input_config_preprocess(cfg);
 	if (cfg->output_en)
 		output_config_preprocess(cfg);
-
-	if (disp_validate_ioctl_params(cfg)) {
-		ret = -EINVAL;
-		goto error2;
-	}
 
 	switch (DISP_SESSION_TYPE(cfg->session_id)) {
 	case DISP_SESSION_PRIMARY:
@@ -1092,7 +1091,6 @@ long __frame_config(unsigned long arg)
 		break;
 	}
 
-error2:
 	disp_input_free_dirty_roi(cfg);
 error1:
 	kfree(cfg);
@@ -1112,6 +1110,9 @@ static int _ioctl_wait_all_jobs_done(unsigned long arg)
 	unsigned int session_id = (unsigned int)arg;
 	struct frame_queue_head_t *head;
 	int ret = 0;
+
+	if (session_id > MAX_SESSION_COUNT - 1)
+		return -EINVAL;
 
 	head = get_frame_queue_head(session_id);
 	if (!head) {

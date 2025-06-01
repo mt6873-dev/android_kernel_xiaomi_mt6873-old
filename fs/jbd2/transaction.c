@@ -4,7 +4,6 @@
  * Written by Stephen C. Tweedie <sct@redhat.com>, 1998
  *
  * Copyright 1998 Red Hat corp --- All Rights Reserved
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This file is part of the Linux kernel and is made available under
  * the terms of the GNU General Public License, version 2, or at your
@@ -93,8 +92,6 @@ jbd2_get_transaction(journal_t *journal, transaction_t *transaction)
 	atomic_set(&transaction->t_updates, 0);
 	atomic_set(&transaction->t_outstanding_credits,
 		   atomic_read(&journal->j_reserved_credits));
-	atomic_set(&transaction->t_write_inodes, 0);
-	atomic_set(&transaction->t_wait_inodes, 0);
 	atomic_set(&transaction->t_handle_count, 0);
 	INIT_LIST_HEAD(&transaction->t_inode_list);
 	INIT_LIST_HEAD(&transaction->t_private_list);
@@ -1356,6 +1353,8 @@ int jbd2_journal_dirty_metadata(handle_t *handle, struct buffer_head *bh)
 	struct journal_head *jh;
 	int ret = 0;
 
+	if (is_handle_aborted(handle))
+		return -EROFS;
 	if (!buffer_jbd(bh))
 		return -EUCLEAN;
 
@@ -1401,18 +1400,6 @@ int jbd2_journal_dirty_metadata(handle_t *handle, struct buffer_head *bh)
 
 	journal = transaction->t_journal;
 	jbd_lock_bh_state(bh);
-
-	if (is_handle_aborted(handle)) {
-		/*
-		 * Check journal aborting with @jh->b_state_lock locked,
-		 * since 'jh->b_transaction' could be replaced with
-		 * 'jh->b_next_transaction' during old transaction
-		 * committing if journal aborted, which may fail
-		 * assertion on 'jh->b_frozen_data == NULL'.
-		 */
-		ret = -EROFS;
-		goto out_unlock_bh;
-	}
 
 	if (jh->b_modified == 0) {
 		/*
@@ -1947,9 +1934,6 @@ static void __jbd2_journal_temp_unlink_buffer(struct journal_head *jh)
  */
 static void __jbd2_journal_unfile_buffer(struct journal_head *jh)
 {
-	J_ASSERT_JH(jh, jh->b_transaction != NULL);
-	J_ASSERT_JH(jh, jh->b_next_transaction == NULL);
-
 	__jbd2_journal_temp_unlink_buffer(jh);
 	jh->b_transaction = NULL;
 	jbd2_journal_put_journal_head(jh);
@@ -2041,7 +2025,6 @@ int jbd2_journal_try_to_free_buffers(journal_t *journal,
 {
 	struct buffer_head *head;
 	struct buffer_head *bh;
-	bool has_write_io_error = false;
 	int ret = 0;
 
 	J_ASSERT(PageLocked(page));
@@ -2066,26 +2049,11 @@ int jbd2_journal_try_to_free_buffers(journal_t *journal,
 		jbd_unlock_bh_state(bh);
 		if (buffer_jbd(bh))
 			goto busy;
-
-		/*
-		 * If we free a metadata buffer which has been failed to
-		 * write out, the jbd2 checkpoint procedure will not detect
-		 * this failure and may lead to filesystem inconsistency
-		 * after cleanup journal tail.
-		 */
-		if (buffer_write_io_error(bh)) {
-			pr_err("JBD2: Error while async write back metadata bh %llu.",
-			       (unsigned long long)bh->b_blocknr);
-			has_write_io_error = true;
-		}
 	} while ((bh = bh->b_this_page) != head);
 
 	ret = try_to_free_buffers(page);
 
 busy:
-	if (has_write_io_error)
-		jbd2_journal_abort(journal, -EIO);
-
 	return ret;
 }
 
@@ -2513,13 +2481,6 @@ void __jbd2_journal_refile_buffer(struct journal_head *jh)
 
 	was_dirty = test_clear_buffer_jbddirty(bh);
 	__jbd2_journal_temp_unlink_buffer(jh);
-
-	/*
-	 * b_transaction must be set, otherwise the new b_transaction won't
-	 * be holding jh reference
-	 */
-	J_ASSERT_JH(jh, jh->b_transaction != NULL);
-
 	/*
 	 * We set b_transaction here because b_next_transaction will inherit
 	 * our jh reference and thus __jbd2_journal_file_buffer() must not
@@ -2579,6 +2540,14 @@ static int jbd2_journal_file_inode(handle_t *handle, struct jbd2_inode *jinode,
 	spin_lock(&journal->j_list_lock);
 	jinode->i_flags |= flags;
 
+	if (jinode->i_dirty_end) {
+		jinode->i_dirty_start = min(jinode->i_dirty_start, start_byte);
+		jinode->i_dirty_end = max(jinode->i_dirty_end, end_byte);
+	} else {
+		jinode->i_dirty_start = start_byte;
+		jinode->i_dirty_end = end_byte;
+	}
+
 	/* Is inode already attached where we need it? */
 	if (jinode->i_transaction == transaction ||
 	    jinode->i_next_transaction == transaction)
@@ -2604,29 +2573,7 @@ static int jbd2_journal_file_inode(handle_t *handle, struct jbd2_inode *jinode,
 	J_ASSERT(!jinode->i_next_transaction);
 	jinode->i_transaction = transaction;
 	list_add(&jinode->i_list, &transaction->t_inode_list);
-	/* collect transaction inodes info */
-	if (flags & JI_WRITE_DATA)
-		atomic_inc(&transaction->t_write_inodes);
-	else
-		atomic_inc(&transaction->t_wait_inodes);
 done:
-	if (jinode->i_transaction == transaction) {
-		if (jinode->i_dirty_end) {
-			jinode->i_dirty_start = min(jinode->i_dirty_start, start_byte);
-			jinode->i_dirty_end = max(jinode->i_dirty_end, end_byte);
-		} else {
-			jinode->i_dirty_start = start_byte;
-			jinode->i_dirty_end = end_byte;
-		}
-	} else {
-		if (jinode->i_next_dirty_end) {
-			jinode->i_next_dirty_start = min(jinode->i_next_dirty_start, start_byte);
-			jinode->i_next_dirty_end = max(jinode->i_next_dirty_end, end_byte);
-		} else {
-			jinode->i_next_dirty_start = start_byte;
-			jinode->i_next_dirty_end = end_byte;
-		}
-	}
 	spin_unlock(&journal->j_list_lock);
 
 	return 0;

@@ -669,19 +669,15 @@ static int rndis_set_response(struct rndis_params *params,
 	rndis_set_cmplt_type *resp;
 	rndis_resp_t *r;
 
-	BufLength = le32_to_cpu(buf->InformationBufferLength);
-	BufOffset = le32_to_cpu(buf->InformationBufferOffset);
-	if ((BufLength > RNDIS_MAX_TOTAL_SIZE) ||
-	    (BufOffset > RNDIS_MAX_TOTAL_SIZE) ||
-	    (BufOffset + 8 >= RNDIS_MAX_TOTAL_SIZE))
-		    return -EINVAL;
-
 	r = rndis_add_response(params, sizeof(rndis_set_cmplt_type));
 	if (!r) {
 		pr_info("rndis_set_response, rndis_add_response return NULL\n");
 		return -ENOMEM;
 	}
 	resp = (rndis_set_cmplt_type *)r->buf;
+
+	BufLength = le32_to_cpu(buf->InformationBufferLength);
+	BufOffset = le32_to_cpu(buf->InformationBufferOffset);
 
 #ifdef	VERBOSE_DEBUG
 	pr_debug("%s: Length: %d\n", __func__, BufLength);
@@ -771,6 +767,7 @@ static int rndis_indicate_status_msg(struct rndis_params *params, u32 status)
 	rndis_indicate_status_msg_type *resp;
 	rndis_resp_t *r;
 
+	pr_info("%s - params->state:%d\n", __func__, params->state);
 	if (params->state == RNDIS_UNINITIALIZED)
 		return -ENOTSUPP;
 
@@ -856,13 +853,13 @@ int rndis_msg_parser(struct rndis_params *params, u8 *buf)
 	/* For USB: responses may take up to 10 seconds */
 	switch (MsgType) {
 	case RNDIS_MSG_INIT:
-		pr_debug("%s: RNDIS_MSG_INIT\n",
+		pr_info("%s: RNDIS_MSG_INIT\n",
 			__func__);
 		params->state = RNDIS_INITIALIZED;
 		return rndis_init_response(params, (rndis_init_msg_type *)buf);
 
 	case RNDIS_MSG_HALT:
-		pr_debug("%s: RNDIS_MSG_HALT\n",
+		pr_info("%s: RNDIS_MSG_HALT\n",
 			__func__);
 
 		params->state = RNDIS_UNINITIALIZED;
@@ -880,7 +877,7 @@ int rndis_msg_parser(struct rndis_params *params, u8 *buf)
 		return rndis_set_response(params, (rndis_set_msg_type *)buf);
 
 	case RNDIS_MSG_RESET:
-		pr_debug("%s: RNDIS_MSG_RESET\n",
+		pr_info("%s: RNDIS_MSG_RESET\n",
 			__func__);
 
 		return rndis_reset_response(params,
@@ -902,6 +899,8 @@ int rndis_msg_parser(struct rndis_params *params, u8 *buf)
 		 */
 		pr_warn("%s: unknown RNDIS message 0x%08X len %d\n",
 				__func__, MsgType, MsgLength);
+		if (MsgLength > 16)
+			MsgLength = 16;
 		{
 			unsigned int i;
 
@@ -987,8 +986,7 @@ struct rndis_params *rndis_register(void (*resp_avail)(void *v), void *v)
 	params->resp_avail = resp_avail;
 	params->v = v;
 	params->max_pkt_per_xfer = 1;
-	INIT_LIST_HEAD(&params->resp_queue);
-	spin_lock_init(&params->resp_lock);
+	INIT_LIST_HEAD(&(params->resp_queue));
 	pr_debug("%s: configNr = %d\n", __func__, i);
 
 	return params;
@@ -1089,36 +1087,41 @@ EXPORT_SYMBOL_GPL(rndis_add_hdr);
 
 void rndis_free_response(struct rndis_params *params, u8 *buf)
 {
-	rndis_resp_t *r, *n;
+	rndis_resp_t *r;
+	struct list_head *act, *tmp;
 
-	spin_lock(&params->resp_lock);
-	list_for_each_entry_safe(r, n, &params->resp_queue, list) {
-		if (r->buf == buf) {
+	if (rndis_debug > 2)
+		RNDIS_DBG("\n");
+
+	list_for_each_safe(act, tmp, &(params->resp_queue)) {
+		if (!act)
+			continue;
+
+		r = list_entry(act, rndis_resp_t, list);
+		if (r && r->buf == buf) {
 			list_del(&r->list);
 			kfree(r);
 		}
 	}
-	spin_unlock(&params->resp_lock);
 }
 EXPORT_SYMBOL_GPL(rndis_free_response);
 
 u8 *rndis_get_next_response(struct rndis_params *params, u32 *length)
 {
-	rndis_resp_t *r, *n;
+	rndis_resp_t *r;
+	struct list_head *act, *tmp;
 
 	if (!length) return NULL;
 
-	spin_lock(&params->resp_lock);
-	list_for_each_entry_safe(r, n, &params->resp_queue, list) {
+	list_for_each_safe(act, tmp, &(params->resp_queue)) {
+		r = list_entry(act, rndis_resp_t, list);
 		if (!r->send) {
 			r->send = 1;
 			*length = r->length;
-			spin_unlock(&params->resp_lock);
 			return r->buf;
 		}
 	}
 
-	spin_unlock(&params->resp_lock);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(rndis_get_next_response);
@@ -1138,9 +1141,7 @@ static rndis_resp_t *rndis_add_response(struct rndis_params *params, u32 length)
 	r->length = length;
 	r->send = 0;
 
-	spin_lock(&params->resp_lock);
-	list_add_tail(&r->list, &params->resp_queue);
-	spin_unlock(&params->resp_lock);
+	list_add_tail(&r->list, &(params->resp_queue));
 	return r;
 }
 

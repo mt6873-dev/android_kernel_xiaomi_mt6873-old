@@ -34,7 +34,6 @@
 #include <linux/fb.h>
 #include <linux/fbcon.h>
 #include <linux/mem_encrypt.h>
-#include <linux/overflow.h>
 
 #include <asm/fb.h>
 
@@ -984,7 +983,6 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 	if ((var->activate & FB_ACTIVATE_FORCE) ||
 	    memcmp(&info->var, var, sizeof(struct fb_var_screeninfo))) {
 		u32 activate = var->activate;
-		u32 unused;
 
 		/* When using FOURCC mode, make sure the red, green, blue and
 		 * transp fields are set to 0.
@@ -1004,15 +1002,6 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 			*var = info->var;
 			goto done;
 		}
-
-		/* bitfill_aligned() assumes that it's at least 8x8 */
-		if (var->xres < 8 || var->yres < 8)
-			return -EINVAL;
-
-		/* Too huge resolution causes multiplication overflow. */
-		if (check_mul_overflow(var->xres, var->yres, &unused) ||
-		    check_mul_overflow(var->xres_virtual, var->yres_virtual, &unused))
-			return -EINVAL;
 
 		ret = info->fbops->fb_check_var(var, info);
 
@@ -1074,18 +1063,12 @@ EXPORT_SYMBOL(fb_set_var);
 
 int
 fb_blank(struct fb_info *info, int blank)
-{
+{	
 	struct fb_event event;
 	int ret = -EINVAL, early_ret;
 
  	if (blank > FB_BLANK_POWERDOWN)
  		blank = FB_BLANK_POWERDOWN;
-
-	if (info->blank == blank) {
-		if (info->fbops->fb_blank)
-			ret = info->fbops->fb_blank(blank, info);
-		return ret;
-	}
 
 	event.info = info;
 	event.data = &blank;
@@ -1105,9 +1088,6 @@ fb_blank(struct fb_info *info, int blank)
 		if (!early_ret)
 			fb_notifier_call_chain(FB_R_EARLY_EVENT_BLANK, &event);
 	}
-
-	if (!ret)
-		info->blank = blank;
 
  	return ret;
 }
@@ -1684,7 +1664,6 @@ static int do_register_framebuffer(struct fb_info *fb_info)
 		if (!registered_fb[i])
 			break;
 	fb_info->node = i;
-	fb_info->blank = -1;
 	atomic_set(&fb_info->count, 1);
 	mutex_init(&fb_info->lock);
 	mutex_init(&fb_info->mm_lock);

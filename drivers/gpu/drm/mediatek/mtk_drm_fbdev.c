@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -268,7 +267,7 @@ int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 			unsigned int *fps)
 {
 #ifdef CONFIG_MTK_DISP_NO_LK
-			return -1;
+		return -1;
 #else
 	struct device_node *chosen_node;
 

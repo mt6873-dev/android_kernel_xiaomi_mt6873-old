@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 //
 // Copyright (c) 2018 MediaTek Inc.
-// Copyright (C) 2021 XiaoMi, Inc.
 
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
@@ -258,6 +257,23 @@ static int dsp_capture_raw_default_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int dsp_fm_default_set(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int val = ucontrol->value.integer.value[0];
+
+	set_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_DEFAULT, val);
+	return 0;
+}
+
+static int dsp_fm_default_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		get_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_DEFAULT);
+	return 0;
+}
+
 static int dsp_primary_runtime_set(struct snd_kcontrol *kcontrol,
 					  struct snd_ctl_elem_value *ucontrol)
 {
@@ -477,6 +493,23 @@ static int dsp_capture_raw_runtime_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int dsp_fm_runtime_set(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int val = ucontrol->value.integer.value[0];
+
+	set_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_RUMTIME, val);
+	return 0;
+}
+
+static int dsp_fm_runtime_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		get_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_RUMTIME);
+	return 0;
+}
+
 static int dsp_captureul1_ref_runtime_set(struct snd_kcontrol *kcontrol,
 					  struct snd_ctl_elem_value *ucontrol)
 {
@@ -664,6 +697,8 @@ static const struct snd_kcontrol_new dsp_platform_kcontrols[] = {
 	SOC_SINGLE_EXT("dsp_captureraw_default_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_capture_raw_default_get,
 		       dsp_capture_raw_default_set),
+	SOC_SINGLE_EXT("dsp_fm_default_en", SND_SOC_NOPM, 0, 0x1, 0,
+		       dsp_fm_default_get, dsp_fm_default_set),
 	SOC_SINGLE_EXT("dsp_primary_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_primary_runtime_get, dsp_primary_runtime_set),
 	SOC_SINGLE_EXT("dsp_deepbuf_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
@@ -690,6 +725,8 @@ static const struct snd_kcontrol_new dsp_platform_kcontrols[] = {
 	SOC_SINGLE_EXT("dsp_captureraw_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_capture_raw_runtime_get,
 		       dsp_capture_raw_runtime_set),
+	SOC_SINGLE_EXT("dsp_fm_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
+		       dsp_fm_runtime_get, dsp_fm_runtime_set),
 	SOC_SINGLE_EXT("audio_dsp_wakelock", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_wakelock_get, dsp_wakelock_set),
 	SOC_SINGLE_EXT("dsp_call_final_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
@@ -859,7 +896,7 @@ SYNC_READINDEX:
 
 	/* handle for underflow */
 	if (dsp_mem->underflowed) {
-		pr_info("%s id = %d return -1 because underflowed[%d] %d\n",
+		pr_info("%s id = %d return -1 because underflowed[%d]\n",
 			__func__, id, dsp_mem->underflowed);
 		dsp_mem->underflowed = 0;
 		spin_unlock_irqrestore(&dsp_ringbuf_lock, flags);

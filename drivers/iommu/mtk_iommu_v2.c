@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Yong Wu <yong.wu@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -425,11 +424,6 @@ int mtk_iommu_dump_sec_larb(int larb, int port)
 				atf_cmd, MTK_M4U_ID(larb, port), 0, 0,
 				0, 0, 0);
 
-#ifdef IOMMU_DESIGN_OF_BANK
-	if (!ret)
-		pr_notice("%s, fail!! larb:%d, port:%d\n",
-			  __func__,  larb, port);
-#endif
 	return ret;
 }
 #endif
@@ -2041,7 +2035,8 @@ static int mtk_iommu_create_mapping(struct device *dev)
 		if (start >> 32 != end >> 32 ||
 		    start >> 32 != mtk_domain_array[dom->id].boundary) {
 			pr_notice("%s, %d, err start:0x%lx, end:0x%lx, boundary:%d\n",
-				  __func__, __LINE__, start, end, boundary);
+				  __func__, __LINE__, start, end,
+				  mtk_domain_array[dom->id].boundary);
 			return -EINVAL;
 		}
 #endif
@@ -2147,7 +2142,8 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 				   struct device *dev)
 {
 	struct mtk_iommu_data *data = dev->iommu_fwspec->iommu_priv;
-#ifndef CONFIG_ARM64
+#if 0
+	ifndef CONFIG_ARM64 case but not required for now.
 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
 #endif
 
@@ -2155,7 +2151,8 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 		return -ENODEV;
 
 	mtk_iommu_config(data, dev, true);
-#ifndef CONFIG_ARM64
+#if 0
+	ifndef CONFIG_ARM64 case but not require for now.
 	/* reserve IOVA region after pgTable ready */
 	mtk_iova_reserve_iommu_regions(dom, dev);
 #endif
@@ -2350,10 +2347,9 @@ static struct iommu_group *mtk_iommu_create_iova_space(
 #endif
 	return group;
 
-#ifdef CONFIG_ARM64
 free_group:
 	kfree(group);
-#endif
+
 free_dom:
 	kfree(dom);
 	return NULL;
@@ -4006,6 +4002,12 @@ static void mtk_iommu_pg_after_on(enum subsys_id sys)
 		}
 
 		spin_lock_irqsave(&data->reg_lock, flags);
+		if (data->poweron) {
+			pr_notice("%s, iommu%u already power on, skip restore\n",
+				  __func__, data->m4uid);
+			spin_unlock_irqrestore(&data->reg_lock, flags);
+			continue;
+		}
 		data->poweron = true;
 
 		ret = mtk_iommu_reg_restore(data);
@@ -4042,6 +4044,12 @@ static void mtk_iommu_pg_before_off(enum subsys_id sys)
 		}
 
 		spin_lock_irqsave(&data->reg_lock, flags);
+		if (!data->poweron) {
+			pr_notice("%s, iommu%u already power off, skip backup\n",
+				  __func__, data->m4uid);
+			spin_unlock_irqrestore(&data->reg_lock, flags);
+			continue;
+		}
 		if (data->isr_ref) {
 			spin_unlock_irqrestore(&data->reg_lock, flags);
 			start = sched_clock();
@@ -4158,7 +4166,7 @@ static int mtk_iommu_hw_init(struct mtk_iommu_data *data)
 
 	writel_relaxed(F_MMU_TFRP_PA_SET(data->protect_base, data->enable_4GB),
 		   data->base + REG_MMU_TFRP_PADDR);
-	// writel_relaxed(0, data->base + REG_MMU_DCM_DIS);
+	writel_relaxed(0x100, data->base + REG_MMU_DCM_DIS);
 
 	//writel_relaxed(0, data->base + REG_MMU_STANDARD_AXI_MODE);
 

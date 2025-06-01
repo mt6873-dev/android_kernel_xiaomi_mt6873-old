@@ -3,7 +3,6 @@
  * mddp_usage.c - Data usage API.
  *
  * Copyright (c) 2020 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/types.h>

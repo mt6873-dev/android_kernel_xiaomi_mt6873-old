@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -90,7 +89,7 @@ int lcm_mode_status;
 int layer_layout_allow_non_continuous;
 
 /* Boundary of enter screen idle */
-unsigned long long idle_check_interval = 100;
+unsigned long long idle_check_interval = 50;
 
 /*********************** layer information statistic *********************/
 #define STATISTIC_MAX_LAYERS 20
@@ -370,7 +369,6 @@ static int alloc_buffer_from_dma(size_t size, struct test_buf_info *buf_info)
 	unsigned long size_align;
 	unsigned int mva = 0;
 
-#ifndef CONFIG_MTK_IOMMU_V2
 	size_align = round_up(size, PAGE_SIZE);
 
 	buf_info->buf_va = dma_alloc_coherent(disp_get_device(), size,
@@ -408,31 +406,7 @@ static int alloc_buffer_from_dma(size_t size, struct test_buf_info *buf_info)
 			DISP_PR_INFO("m4u_alloc_mva returns fail: %d\n", ret);
 #endif
 	}
-#else /* !CONFIG_MTK_IOMMU */
-	struct ion_client *ion_display_client = NULL;
-	struct ion_handle *ion_display_handle = NULL;
 
-	size_align = round_up(size, PAGE_SIZE);
-	ion_display_client = disp_ion_create("disp_cap_ovl");
-	if (ion_display_client == NULL) {
-		DISP_PR_INFO("primary capture:Fail to create ion\n");
-		ret = -1;
-		goto out;
-	}
-
-	ion_display_handle = disp_ion_alloc(ion_display_client,
-					    ION_HEAP_MULTIMEDIA_PA2MVA_MASK,
-					    buf_info->buf_pa, size_align);
-	if (ret != 0) {
-		DISP_PR_INFO("primary capture:Fail to allocate buffer\n");
-		ret = -1;
-		goto out;
-	}
-	disp_ion_get_mva(ion_display_client, ion_display_handle,
-			 (unsigned int *)&mva, 0, DISP_M4U_PORT_DISP_WDMA0);
-
-out:
-#endif /* CONFIG_MTK_IOMMU */
 	buf_info->buf_mva = mva;
 	DISPMSG("%s MVA is 0x%x PA is 0x%pa\n",
 		__func__, mva, &buf_info->buf_pa);

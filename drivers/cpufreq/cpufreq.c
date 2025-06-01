@@ -233,7 +233,7 @@ struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 	struct cpufreq_policy *policy = NULL;
 	unsigned long flags;
 
-	if (cpu >= nr_cpu_ids)
+	if (WARN_ON(cpu >= nr_cpu_ids))
 		return NULL;
 
 	/* get the cpufreq driver */
@@ -406,8 +406,10 @@ wait:
 	policy->transition_task = current;
 
 	spin_unlock(&policy->transition_lock);
-
+#if !defined(CONFIG_MACH_MT6893) && !defined(CONFIG_MACH_MT6877) \
+	&& !defined(CONFIG_MACH_MT6781)
 	arch_set_freq_scale(policy->cpus, freqs->new, policy->cpuinfo.max_freq);
+#endif
 	arch_set_max_freq_scale(policy->cpus, policy->max);
 	arch_set_min_freq_scale(policy->cpus, policy->min);
 	update_cpu_capacity_cpumask(policy->cpus);

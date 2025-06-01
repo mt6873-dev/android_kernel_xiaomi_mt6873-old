@@ -68,26 +68,6 @@ static unsigned int get_i2s_wlen(snd_pcm_format_t format)
 #define MTK_AFE_I2S8_KCONTROL_NAME "I2S8_HD_Mux"
 #define MTK_AFE_I2S9_KCONTROL_NAME "I2S9_HD_Mux"
 
-/*Audio-add Begin*/
-/*
-#define MTK_I2S0_GPIO_KCONTROL_NAME "I2S0_GPIO"
-#define MTK_I2S1_GPIO_KCONTROL_NAME "I2S1_GPIO"
-#define MTK_I2S2_GPIO_KCONTROL_NAME "I2S2_GPIO"
-#define MTK_I2S3_GPIO_KCONTROL_NAME "I2S3_GPIO"
-#define MTK_I2S5_GPIO_KCONTROL_NAME "I2S5_GPIO"
-#define MTK_I2S6_GPIO_KCONTROL_NAME "I2S6_GPIO"
-#define MTK_I2S7_GPIO_KCONTROL_NAME "I2S7_GPIO"
-#define MTK_I2S8_GPIO_KCONTROL_NAME "I2S8_GPIO"
-#define MTK_I2S9_GPIO_KCONTROL_NAME "I2S9_GPIO"
-*/
-/*End*/
-
-#ifdef CONFIG_CS35L41_I2S0_RESET
-//Audio add special for cs35l41 I2S0/I2S3 Clk resync
-#define MTK_AFE_RESET_I2S0_KCONTROL_NAME "I2S0RESET"
-//End
-#endif
-
 #define I2S0_HD_EN_W_NAME "I2S0_HD_EN"
 #define I2S1_HD_EN_W_NAME "I2S1_HD_EN"
 #define I2S2_HD_EN_W_NAME "I2S2_HD_EN"
@@ -203,44 +183,6 @@ static int mt6873_i2s_hd_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#ifdef CONFIG_CS35L41_I2S0_RESET
-//Audio add special for cs35l41 I2S0/I2S3 Clk resync
-static int mt6873_i2s_reset_get(struct snd_kcontrol *kcontrol,
-			     struct snd_ctl_elem_value *ucontrol)
-{
-	return 0;
-}
-
-static int mt6873_i2s_reset_set(struct snd_kcontrol *kcontrol,
-			     struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
-	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
-
-	dev_info(afe->dev, "%s(), kcontrol name %s\n",
-		 __func__, kcontrol->id.name);
-
-	regmap_update_bits(afe->regmap, AUDIO_TOP_CON1, 0x6,
-				   0x3 << 1);
-	udelay(200);
-	regmap_update_bits(afe->regmap, AFE_I2S_CON, 0x1,
-				   0x0);
-	regmap_update_bits(afe->regmap, AFE_I2S_CON3, 0x1,
-				   0x0);
-	udelay(200);
-	regmap_update_bits(afe->regmap, AFE_I2S_CON, 0x1,
-				   0x1);
-	regmap_update_bits(afe->regmap, AFE_I2S_CON3, 0x1,
-				   0x1);
-	udelay(200);
-	regmap_update_bits(afe->regmap, AUDIO_TOP_CON1, 0x6,
-				   0x0 << 1);
-
-	return 0;
-}
-//End
-#endif
-
 static const struct snd_kcontrol_new mtk_dai_i2s_controls[] = {
 	SOC_ENUM_EXT(MTK_AFE_I2S0_KCONTROL_NAME, mt6873_i2s_enum[0],
 		     mt6873_i2s_hd_get, mt6873_i2s_hd_set),
@@ -260,13 +202,6 @@ static const struct snd_kcontrol_new mtk_dai_i2s_controls[] = {
 		     mt6873_i2s_hd_get, mt6873_i2s_hd_set),
 	SOC_ENUM_EXT(MTK_AFE_I2S9_KCONTROL_NAME, mt6873_i2s_enum[0],
 		     mt6873_i2s_hd_get, mt6873_i2s_hd_set),
-
-	#ifdef CONFIG_CS35L41_I2S0_RESET
-	//Audio add special for cs35l41 I2S0/I2S3 Clk resync
-	SOC_ENUM_EXT(MTK_AFE_RESET_I2S0_KCONTROL_NAME, mt6873_i2s_enum[0],
-		     mt6873_i2s_reset_get, mt6873_i2s_reset_set),
-	//End
-	#endif
 };
 
 /* dai component */
@@ -417,6 +352,7 @@ static const struct snd_kcontrol_new mtk_i2s3_ch1_mix[] = {
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH1", AFE_CONN0, I_DL3_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL12_CH1", AFE_CONN0, I_DL12_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH1", AFE_CONN0_1, I_DL6_CH1, 1, 0),
+	SOC_DAPM_SINGLE_AUTODISABLE("DL7_CH1", AFE_CONN0_1, I_DL7_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH1", AFE_CONN0_1, I_DL4_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH1", AFE_CONN0_1, I_DL5_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL8_CH1", AFE_CONN0_1, I_DL8_CH1, 1, 0),
@@ -441,6 +377,7 @@ static const struct snd_kcontrol_new mtk_i2s3_ch2_mix[] = {
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH2", AFE_CONN1, I_DL3_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL12_CH2", AFE_CONN1, I_DL12_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH2", AFE_CONN1_1, I_DL6_CH2, 1, 0),
+	SOC_DAPM_SINGLE_AUTODISABLE("DL7_CH2", AFE_CONN1_1, I_DL7_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN1_1, I_DL4_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH2", AFE_CONN1_1, I_DL5_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL8_CH2", AFE_CONN1_1, I_DL8_CH2, 1, 0),
@@ -1313,6 +1250,9 @@ static const struct snd_soc_dapm_route mtk_dai_i2s_routes[] = {
 	{"I2S3_CH1", "DL8_CH1", "DL8"},
 	{"I2S3_CH2", "DL8_CH2", "DL8"},
 
+	{"I2S3_CH1", "DL7_CH1", "DL7"},
+	{"I2S3_CH2", "DL7_CH2", "DL7"},
+
 	{"I2S3", NULL, "I2S3_CH1"},
 	{"I2S3", NULL, "I2S3_CH2"},
 	{"I2S3", NULL, "I2S3_TINYCONN_CH1_MUX"},
@@ -1981,7 +1921,7 @@ static struct snd_soc_dai_driver mtk_dai_i2s_driver[] = {
 	{
 		.name = "I2S6",
 		.id = MT6873_DAI_I2S_6,
-		.playback = {
+		.capture = {
 			.stream_name = "I2S6",
 			.channels_min = 1,
 			.channels_max = 2,
@@ -2005,7 +1945,7 @@ static struct snd_soc_dai_driver mtk_dai_i2s_driver[] = {
 	{
 		.name = "I2S8",
 		.id = MT6873_DAI_I2S_8,
-		.playback = {
+		.capture = {
 			.stream_name = "I2S8",
 			.channels_min = 1,
 			.channels_max = 2,

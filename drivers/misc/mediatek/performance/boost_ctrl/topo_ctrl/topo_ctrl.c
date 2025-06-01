@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -203,7 +202,8 @@ PROC_FOPS_RO(cpus_per_cluster);
 int topo_ctrl_init(struct proc_dir_entry *parent)
 {
 	struct proc_dir_entry *topo_dir = NULL;
-	int i, ret = 0;
+	int ret = 0;
+	size_t i;
 
 	struct pentry {
 		const char *name;

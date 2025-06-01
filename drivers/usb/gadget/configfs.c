@@ -22,10 +22,8 @@
 #include <mt-plat/mtk_usb2jtag.h>
 #endif
 
-#include <linux/power_supply.h>
-
 #ifdef CONFIG_USB_CONFIGFS_F_ACC
-extern int acc_ctrlrequest_composite(struct usb_composite_dev *cdev,
+extern int acc_ctrlrequest(struct usb_composite_dev *cdev,
 				const struct usb_ctrlrequest *ctrl);
 void acc_disconnect(void);
 #endif
@@ -156,25 +154,26 @@ struct gadget_config_name {
 	struct list_head list;
 };
 
-#define USB_MAX_STRING_WITH_NULL_LEN	(USB_MAX_STRING_LEN+1)
-
+#define MAX_USB_STRING_LEN	126
+#define MAX_USB_STRING_WITH_NULL_LEN	(MAX_USB_STRING_LEN+1)
 static int usb_string_copy(const char *s, char **s_copy)
 {
 	int ret;
 	char *str;
 	char *copy = *s_copy;
 	ret = strlen(s);
-	if (ret > USB_MAX_STRING_LEN)
+	if (ret > MAX_USB_STRING_LEN)
 		return -EOVERFLOW;
 
 	if (copy) {
 		str = copy;
 	} else {
-		str = kmalloc(USB_MAX_STRING_WITH_NULL_LEN, GFP_KERNEL);
+		str = kmalloc(MAX_USB_STRING_WITH_NULL_LEN, GFP_KERNEL);
 		if (!str)
 			return -ENOMEM;
 	}
-	strcpy(str, s);
+	strncpy(str, s, MAX_USB_STRING_WITH_NULL_LEN);
+
 	if (str[ret - 1] == '\n')
 		str[ret - 1] = '\0';
 	*s_copy = str;
@@ -322,11 +321,8 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 	char *name;
 	int ret;
 
-	if(!page)
-		return -EFAULT;
-
 	if (strlen(page) < len)
-		len = strlen(page);
+		return -EOVERFLOW;
 
 	name = kstrdup(page, GFP_KERNEL);
 	if (!name)
@@ -1309,9 +1305,9 @@ static void purge_configs_funcs(struct gadget_info *gi)
 
 		cfg = container_of(c, struct config_usb_cfg, c);
 
-		list_for_each_entry_safe_reverse(f, tmp, &c->functions, list) {
+		list_for_each_entry_safe(f, tmp, &c->functions, list) {
 
-			list_move(&f->list, &cfg->func_list);
+			list_move_tail(&f->list, &cfg->func_list);
 			if (f->unbind) {
 				dev_dbg(&gi->cdev.gadget->dev,
 				         "unbind function '%s'/%p\n",
@@ -1478,27 +1474,6 @@ err_comp_cleanup:
 	return ret;
 }
 
-static int mtk_charger_canncel_recheck(void)
-{
-	union power_supply_propval pval = {0,};
-	struct power_supply     *usb_psy = NULL;
-	int rc = 0;
-
-	if (!usb_psy) {
-		usb_psy = power_supply_get_by_name("usb");
-		if (!usb_psy) {
-			pr_err("Could not get usb psy by canncel recheck\n");
-			return -ENODEV;
-		}
-	}
-
-	pval.intval = 0;
-	rc = power_supply_set_property(usb_psy,
-				POWER_SUPPLY_PROP_TYPE_RECHECK, &pval);
-
-	return rc;
-}
-
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 static void android_work(struct work_struct *data)
 {
@@ -1537,7 +1512,6 @@ static void android_work(struct work_struct *data)
 					KOBJ_CHANGE, configured);
 		pr_info("%s: sent uevent %s\n", __func__, configured[0]);
 		uevent_sent = true;
-		mtk_charger_canncel_recheck();
 #ifdef CONFIG_MTPROF
 		if (status[1]) {
 			static int first_shot = 1;
@@ -1586,8 +1560,6 @@ static void configfs_composite_unbind(struct usb_gadget *gadget)
 	usb_ep_autoconfig_reset(cdev->gadget);
 	spin_lock_irqsave(&gi->spinlock, flags);
 	cdev->gadget = NULL;
-	cdev->deactivations = 0;
-	gadget->deactivated = false;
 	set_gadget_data(gadget, NULL);
 	spin_unlock_irqrestore(&gi->spinlock, flags);
 }
@@ -1716,7 +1688,7 @@ static int android_setup(struct usb_gadget *gadget,
 
 #ifdef CONFIG_USB_CONFIGFS_F_ACC
 	if (value < 0)
-		value = acc_ctrlrequest_composite(cdev, c);
+		value = acc_ctrlrequest(cdev, c);
 #endif
 
 	if (value < 0)
@@ -1782,7 +1754,7 @@ static const struct usb_gadget_driver configfs_driver_template = {
 	.suspend	= configfs_composite_suspend,
 	.resume		= configfs_composite_resume,
 
-	.max_speed	= USB_SPEED_SUPER_PLUS,
+	.max_speed	= USB_SPEED_SUPER,
 	.driver = {
 		.owner          = THIS_MODULE,
 		.name		= "configfs-gadget",
@@ -1839,10 +1811,10 @@ static ssize_t								\
 field ## _store(struct device *dev, struct device_attribute *attr,	\
 		const char *buf, size_t size)				\
 {									\
-	if (size >= USB_MAX_STRING_LEN)					\
+	if (size >= MAX_USB_STRING_LEN)					\
 		return -EINVAL;						\
 	pr_info("%s %s len=%zu\n", __func__, buf, size); \
-	return strlcpy(buffer, buf, USB_MAX_STRING_LEN); \
+	return strlcpy(buffer, buf, MAX_USB_STRING_LEN); \
 }									\
 static DEVICE_ATTR(field, 0644, field ## _show, field ## _store)
 
@@ -1894,7 +1866,7 @@ static int android_device_create(struct gadget_info *gi)
 	if (IS_ERR(android_device))
 		return PTR_ERR(android_device);
 
-	serial_string = kzalloc(sizeof(char)*USB_MAX_STRING_WITH_NULL_LEN,
+	serial_string = kzalloc(sizeof(char)*MAX_USB_STRING_WITH_NULL_LEN,
 			GFP_KERNEL);
 	serial_string[0] = '\0';
 
@@ -1982,7 +1954,7 @@ static struct config_group *gadgets_make(
 	gi->composite.unbind = configfs_do_nothing;
 	gi->composite.suspend = NULL;
 	gi->composite.resume = NULL;
-	gi->composite.max_speed = USB_SPEED_SUPER_PLUS;
+	gi->composite.max_speed = USB_SPEED_SUPER;
 
 	spin_lock_init(&gi->spinlock);
 	mutex_init(&gi->lock);

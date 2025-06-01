@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016 Laurent Pinchart <laurent.pinchart@ideasonboard.com>
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * DRM core format related functions
  *

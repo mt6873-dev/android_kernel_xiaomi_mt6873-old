@@ -609,10 +609,6 @@ static int ion_dump_all_share_fds(struct seq_file *s)
 	int res;
 	struct dump_fd_data data;
 
-	/* function is not available, just return */
-	if (ion_drv_file_to_buffer(NULL) == ERR_PTR(-EPERM))
-		return 0;
-
 	ION_DUMP(
 		 s,
 		 "%18s %9s %16s %5s %5s %16s %4s\n",
@@ -642,6 +638,7 @@ static int ion_sec_heap_debug_show(
 	struct ion_sec_buffer_info *bug_info;
 	bool has_orphaned = false;
 	size_t fr_size = 0;
+	size_t wfd_size = 0;
 	size_t sec_size = 0;
 	size_t prot_size = 0;
 	const char *seq_line = "---------------------------------------";
@@ -690,6 +687,8 @@ static int ion_sec_heap_debug_show(
 				prot_size += buffer->size;
 			if (buffer->heap->id == ION_HEAP_TYPE_MULTIMEDIA_2D_FR)
 				fr_size += buffer->size;
+			if (buffer->heap->id == ION_HEAP_TYPE_MULTIMEDIA_WFD)
+				wfd_size += buffer->size;
 
 			if (!buffer->handle_count)
 				has_orphaned = true;
@@ -704,6 +703,7 @@ static int ion_sec_heap_debug_show(
 	ION_DUMP(s, "%s\n", seq_line);
 	ION_DUMP(s, "%s\n", seq_line);
 	ION_DUMP(s, "%16s %16zu\n", "sec-sz:", sec_size);
+	ION_DUMP(s, "%16s %16zu\n", "wfd-sz:", wfd_size);
 	ION_DUMP(s, "%16s %16zu\n", "prot-sz:", prot_size);
 	ION_DUMP(s, "%16s %16zu\n", "2d-fr-sz:", fr_size);
 	ION_DUMP(s, "%s\n", seq_line);
@@ -738,6 +738,8 @@ static int ion_sec_heap_debug_show(
 
 				if (handle->buffer->heap->id ==
 					ION_HEAP_TYPE_MULTIMEDIA_SEC ||
+				    handle->buffer->heap->id ==
+				    ION_HEAP_TYPE_MULTIMEDIA_WFD ||
 				    handle->buffer->heap->id ==
 				    ION_HEAP_TYPE_MULTIMEDIA_PROT ||
 				    handle->buffer->heap->id ==

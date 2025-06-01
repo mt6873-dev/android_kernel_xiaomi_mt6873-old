@@ -3,7 +3,6 @@
 // mt6785-mt6359.c  --  mt6785 mt6359 ALSA SoC machine driver
 //
 // Copyright (c) 2018 MediaTek Inc.
-// Copyright (C) 2021 XiaoMi, Inc.
 // Author: Eason Yen <eason.yen@mediatek.com>
 
 #include <linux/module.h>

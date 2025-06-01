@@ -51,6 +51,16 @@ config LEDS_MTK_PWM
 	  To compile this driver as a module, choose 'M' here: the module
 	  will be called leds-mtk-pwm.
 
+config LEDS_MTK_I2C
+	tristate "Mediatek i2c LED support"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for Mediatek i2c LEDs.
+	  say 'y' to enable this
+
+	  To compile this driver as a module, choose 'M' here: the module
+	  will be called leds-mtk-i2c.
+
 config CONTROL_BL_TEMPERATURE
 	bool "Support backlight controlled by thermal"
 	---help---
@@ -58,12 +68,3 @@ config CONTROL_BL_TEMPERATURE
 	  Set y to support.
 	  Set n to not support.
 	  This option enables means thermal can set brightness by the api of led driver.
-
-config BACKLIGHT_SUPPORT_LM36273
-	bool "LM36273 Support"
-	default n
-	---help---
-	  LED/bias driver for lm36273 support.
-	  Set y to support.
-	  Set n to disable.
-

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -19,6 +18,7 @@
 #include <mt-plat/devapc_public.h>
 #endif
 #include "clkdbg.h"
+#include "clkchk.h"
 #include "clk-fmeter.h"
 
 #define ALL_CLK_ON		0
@@ -480,16 +480,6 @@ static int __init clkdbg_mt6873_init(void)
 	return 0;
 }
 subsys_initcall(clkdbg_mt6873_init);
-
-static bool is_valid_reg(void __iomem *addr)
-{
-#ifdef CONFIG_64BIT
-	return ((u64)addr & 0xf0000000) != 0UL ||
-			(((u64)addr >> 32U) & 0xf0000000) != 0UL;
-#else
-	return ((u32)addr & 0xf0000000) != 0U;
-#endif
-}
 
 static struct regbase *lookup_regbase(char *name)
 {

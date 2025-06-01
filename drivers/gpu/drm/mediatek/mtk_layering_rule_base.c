@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -57,7 +56,12 @@ static int ext_id_tuning(struct drm_device *dev,
 static unsigned int roll_gpu_for_idle;
 static int g_emi_bound_table[HRT_LEVEL_NUM];
 
+#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
+	defined(CONFIG_MACH_MT6877)
+#define RSZ_TILE_LENGTH 1088
+#else
 #define RSZ_TILE_LENGTH 1440
+#endif
 #define RSZ_IN_MAX_HEIGHT 4096
 #define DISP_RSZ_LAYER_NUM 2
 
@@ -224,7 +228,7 @@ static bool is_extended_base_layer_valid(struct drm_crtc *crtc,
 	 * because extended layer would not find base layer in one of
 	 * display pipe.
 	 * So always mark this specific layer as overlap to avoid the fail case.
-	  * *
+	 * *
 	 * UPDATE @ 2020/12/17
 	 * Could skip this step through revise ovl extended layer config
 	 * flow; by enable attached layer index's RDMA, extended layer
@@ -251,7 +255,7 @@ static inline bool is_extended_over_limit(int ext_cnt)
  * 2. if more than 1 ext layer exist, need to check the phy layer
  */
 static int is_continuous_ext_layer_overlap(struct drm_crtc *crtc,
-			struct drm_mtk_layer_config *configs, int curr)
+		struct drm_mtk_layer_config *configs, int curr)
 {
 	int overlapped;
 	struct drm_mtk_layer_config *src_info, *dst_info;
@@ -502,6 +506,8 @@ static void dump_disp_trace(struct drm_mtk_layering_info *disp_info)
 			     disp_info->gles_tail[i]);
 
 		for (j = 0; j < disp_info->layer_num[i]; j++) {
+			if (n >= len)
+				break;
 			c = &disp_info->input_config[i][j];
 			n += snprintf(msg + n, len - n,
 				      "|L%d->%d(%u,%u,%ux%u),f:0x%x,c:%d",
@@ -1411,11 +1417,14 @@ static int calc_hrt_num(struct drm_device *dev,
 			_calc_hrt_num(dev, disp_info, HRT_SECONDARY,
 				      HRT_TYPE_EMI, scan_overlap, false);
 	}
+	/* Virtual Display should not add to HRT sum: ovl -> wdma */
+	/*
 	if (has_hrt_limit(disp_info, HRT_THIRD)) {
-		sum_overlap_w += _calc_hrt_num(dev, disp_info, HRT_THIRD,
-					       HRT_TYPE_EMI, scan_overlap,
-					       false);
+		sum_overlap_w += calc_hrt_num(dev, disp_info, HRT_THIRD,
+				HRT_TYPE_EMI, scan_overlap,
+				false);
 	}
+	*/
 
 	emi_hrt_level = get_hrt_level(sum_overlap_w, false);
 
@@ -1485,7 +1494,6 @@ static int ext_layer_grouping(struct drm_device *dev,
 		} else {
 			crtc = NULL;
 		}
-
 		/*
 		 * If the physical layer > input layer,
 		 * then skip using extended layer.
@@ -1586,7 +1594,7 @@ static int mtk_lye_get_comp_id(int disp_idx, struct drm_device *drm_dev,
 		else
 			return DDP_COMPONENT_OVL0;
 	}
-#if defined(CONFIG_MACH_MT6885)
+#if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6877)
 	else if (disp_idx == 1)
 		return DDP_COMPONENT_OVL2_2L;
 	else
@@ -1658,15 +1666,14 @@ static void clear_layer(struct drm_mtk_layering_info *disp_info)
 			disp_info->gles_tail[di]--;
 		else
 			c->layer_caps |= MTK_DISP_CLIENT_CLEAR_LAYER;
-/*
+
 		if ((c->src_width < c->dst_width &&
 		     c->src_height < c->dst_height) &&
 		     get_layering_opt(LYE_OPT_RPO) &&
 		    top < disp_info->gles_tail[di]) {
 			c->layer_caps |= MTK_DISP_RSZ_LAYER;
 			l_rule_info->addon_scn[di] = ONE_SCALING;
-		} else */
-		{
+		} else {
 			c->layer_caps &= ~MTK_DISP_RSZ_LAYER;
 			l_rule_info->addon_scn[di] = NONE;
 
@@ -1699,7 +1706,8 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 	int prev_comp_id = -1;
 	int i;
 	int clear_idx = -1;
-#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833)
+#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
+	defined(CONFIG_MACH_MT6877)
 	int no_compress_layer_num = 0;
 #endif
 
@@ -1752,7 +1760,8 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 				ext_cnt = 0;
 			comp_state.ext_lye_id = LYE_NORMAL;
 		}
-#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833)
+#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
+	defined(CONFIG_MACH_MT6877)
 		if (disp_idx == 0 &&
 			(comp_state.comp_id == DDP_COMPONENT_OVL0_2L) &&
 			!is_extended_layer(layer_info) &&
@@ -1770,7 +1779,8 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 		plane_idx++;
 		prev_comp_id = comp_state.comp_id;
 	}
-#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833)
+#if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
+	defined(CONFIG_MACH_MT6877)
 	if (disp_idx == 0) {
 		HRT_SET_NO_COMPRESS_FLAG(disp_info->hrt_num,
 				no_compress_layer_num);
@@ -1903,7 +1913,10 @@ static int check_layering_result(struct drm_mtk_layering_info *info)
 
 static int check_disp_info(struct drm_mtk_layering_info *disp_info)
 {
-	int disp_idx, ghead, gtail;
+	int disp_idx = 0;
+	int ghead = -1;
+	int gtail = -1;
+	int layer_num = 0;
 	int i;
 
 	if (disp_info == NULL) {
@@ -1913,7 +1926,7 @@ static int check_disp_info(struct drm_mtk_layering_info *disp_info)
 
 	for (i = 0; i < 3; i++) {
 		int mode = disp_info->disp_mode[i];
-		int layer_num = disp_info->layer_num[i];
+		layer_num = disp_info->layer_num[i];
 
 		if (mode < 0 || mode >= MTK_DRM_SESSION_NUM) {
 			DDPPR_ERR("[HRT] i %d, invalid mode %d\n", i, mode);
@@ -1937,18 +1950,23 @@ static int check_disp_info(struct drm_mtk_layering_info *disp_info)
 	}
 
 	for (disp_idx = 0; disp_idx < HRT_TYPE_NUM; disp_idx++) {
-		if (disp_info->layer_num[disp_idx] > 0 &&
+		layer_num = disp_info->layer_num[disp_idx];
+		if (layer_num > 0 &&
 		    disp_info->input_config[disp_idx] == NULL) {
 			DDPPR_ERR(
 				"[HRT]input config is empty,disp:%d,l_num:%d\n",
-				disp_idx, disp_info->layer_num[disp_idx]);
+				disp_idx, layer_num);
 			return -1;
 		}
 
 		ghead = disp_info->gles_head[disp_idx];
 		gtail = disp_info->gles_tail[disp_idx];
-		if ((ghead < 0 && gtail >= 0) || (gtail < 0 && ghead >= 0)) {
-			dump_disp_info(disp_info, DISP_DEBUG_LEVEL_ERR);
+		if ((!((ghead == -1) && (gtail == -1)) &&
+			!((ghead >= 0) && (gtail >= 0))) ||
+			(ghead >= layer_num) ||
+			(gtail >= layer_num) ||
+			(ghead > gtail)) {
+			//dump_disp_info(disp_info, DISP_DEBUG_LEVEL_ERR);
 			DDPPR_ERR("[HRT]gles invalid,disp:%d,head:%d,tail:%d\n",
 				  disp_idx, disp_info->gles_head[disp_idx],
 				  disp_info->gles_tail[disp_idx]);
@@ -2011,7 +2029,8 @@ static int set_disp_info(struct drm_mtk_layering_info *disp_info_user,
 		sizeof(struct drm_mtk_layering_info));
 
 	for (i = 0; i < HRT_TYPE_NUM; i++)
-		_copy_layer_info_from_disp(disp_info_user, debug_mode, i);
+		if (_copy_layer_info_from_disp(disp_info_user, debug_mode, i))
+			return -EFAULT;
 
 	memset(l_rule_info->addon_scn, 0x0, sizeof(l_rule_info->addon_scn));
 	return 0;
@@ -2289,41 +2308,27 @@ static int check_cross_pipe_rpo(
 		   param[0].out_x);
 
 	/* right half */
-	offset[1] =
-		(init_phase + dst_w / 2 * step) -
-		(src_w / 2 - tile_loss - (offset[0] ? 1 : 0) + 1) * UNIT +
-		UNIT;
+	tile_out_len[1] = dst_w - tile_out_len[0];
+	tile_in_len[1] = ((tile_out_len[1] * src_w * 10) /
+		dst_w + 5) / 10 + tile_loss + (offset[0] ? 1 : 0);
+
+	offset[1] = (-offset[0]) + (tile_out_len[0] * step) -
+			(src_w - tile_in_len[1]) * UNIT;
+	/*
+	 * offset[1] = (init_phase + dst_w / 2 * step) -
+	 *	(src_w / 2 - tile_loss - (offset[0] ? 1 : 0) + 1) * UNIT +
+	 *	UNIT;
+	 */
+	DDPINFO("HRT %s,in_ph:%d,off[1]:%d\n", __func__, init_phase, offset[1]);
 	int_offset[1] = offset[1] / UNIT;
 	sub_offset[1] = offset[1] - UNIT * int_offset[1];
-	if((width - dst_w) >= 10) {
-            /*tile_out_len[1] = dst_roi->x + dst_roi->width - width / 2;*/
-            tile_out_len[1] = dst_w - tile_out_len[0];
-            /*tile_in_len[1] = (((dst_roi->width - width / 2) * src_roi->width * 10) /
-                dst_roi->width + 5) / 10 + tile_loss + (offset[0] ? 1 : 0) + src_roi->x;*/
-        }
-        else {
-            tile_out_len[1] = width / 2;
-            /*tile_in_len[1] = ((tile_out_len[1] * src_roi->width * 10) /
-                dst_roi->width + 5) / 10 + tile_loss + (offset[0] ? 1 : 0);*/
-        }
-	tile_in_len[1] = ((tile_out_len[1] * src_w * 10) /
-			dst_w + 5) / 10 + tile_loss + (offset[0] ? 1 : 0);
-
-       if (int_offset[0] < 0) {
-           offset[1] -= UNIT;
-           int_offset[1] = offset[1] / UNIT;
-           sub_offset[1] = offset[1] - UNIT * int_offset[1];
-           DDPINFO("%s :int[0]<0,offset[1]:%u,sub[0]:%u,int[1]:%u,sub[1]:%u\n", __func__,
-               offset[1], sub_offset[0], int_offset[1], sub_offset[1]);
-      }
-      /*
-
+	/*
 	if (int_offset[1] & 0x1) {
 		int_offset[1]++;
 		tile_in_len[1]++;
 		DDPINFO("HRT right tile int_offset: make odd to even\n");
 	}
-      */
+	*/
 	param[1].step = step;
 	param[1].out_x = 0;
 	param[1].int_offset = (u32)(int_offset[1] & 0xffff);
@@ -2350,7 +2355,6 @@ static int check_cross_pipe_rpo(
 
 	return 0;
 }
-
 static int RPO_rule(struct drm_crtc *crtc,
 		struct drm_mtk_layering_info *disp_info, int disp_idx,
 		bool has_pq)
@@ -3144,3 +3148,65 @@ int mtk_layering_rule_ioctl(struct drm_device *dev, void *data,
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_COMPAT)
+struct drm_mtk_layering_info_32 {
+	compat_uptr_t input_config[3];
+	int disp_mode[3];
+	/* index of crtc display mode including resolution, fps... */
+	int disp_mode_idx[3];
+	int layer_num[3];
+	int gles_head[3];
+	int gles_tail[3];
+	int hrt_num;
+	/* res_idx: SF/HWC selects which resolution to use */
+	int res_idx;
+	uint32_t hrt_weight;
+	uint32_t hrt_idx;
+};
+
+int mtk_layering_rule_ioctl_compat(struct file *file, unsigned int cmd,
+			      unsigned long arg)
+{
+	struct drm_mtk_layering_info data;
+	struct drm_mtk_layering_info_32 data32;
+	int err, i;
+
+	if (copy_from_user(&data32, (void __user *)arg, sizeof(data32)))
+		return -EFAULT;
+	for (i = 0; i < 3; i++) {
+		data.input_config[i] = compat_ptr(data32.input_config[i]);
+		data.disp_mode[i] = data32.disp_mode[i];
+		data.disp_mode_idx[i] = data32.disp_mode_idx[i];
+		data.layer_num[i] = data32.layer_num[i];
+		data.gles_head[i] = data32.gles_head[i];
+		data.gles_tail[i] = data32.gles_tail[i];
+	}
+	data.hrt_num = data32.hrt_num;
+	data.res_idx = data32.res_idx;
+	data.hrt_weight = data32.hrt_weight;
+	data.hrt_idx = data32.hrt_idx;
+
+	err = drm_ioctl_kernel(file, mtk_layering_rule_ioctl, &data,
+			DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW);
+	if (err)
+		return err;
+
+	for (i = 0; i < 3; i++) {
+		//data32.input_config[i] = ptr_to_compat(data.input_config[i]);
+		data32.disp_mode[i] = data.disp_mode[i];
+		data32.disp_mode_idx[i] = data.disp_mode_idx[i];
+		data32.layer_num[i] = data.layer_num[i];
+		data32.gles_head[i] = data.gles_head[i];
+		data32.gles_tail[i] = data.gles_tail[i];
+	}
+	data32.hrt_num = data.hrt_num;
+	data32.res_idx = data.res_idx;
+	data32.hrt_weight = data.hrt_weight;
+	data32.hrt_idx = data.hrt_idx;
+	if (copy_to_user((void __user *)arg, &data32, sizeof(data32)))
+		return -EFAULT;
+
+	return 0;
+}
+#endif

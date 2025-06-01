@@ -85,6 +85,4 @@ defined(CONFIG_MACH_MT6739) || defined(CONFIG_MACH_MT6761)\
 extern void ged_dump_fw(void);
 #endif
 
-unsigned int is_gpu_ged_log_enable(void);
-
 #endif

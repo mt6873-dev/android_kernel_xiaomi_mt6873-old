@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -37,12 +36,6 @@ int mtk_dprec_logger_pr(unsigned int type, char *fmt, ...);
 	do {                                                                   \
 		mtk_dprec_logger_pr(DPREC_LOGGER_DEBUG, fmt, ##arg);           \
 		if (g_mobile_log)                                              \
-			pr_info(pr_fmt(fmt), ##arg);     \
-	} while (0)
-#define DDPDSIINFO(fmt, arg...)                                                   \
-	do {                                                                   \
-		mtk_dprec_logger_pr(DPREC_LOGGER_DEBUG, fmt, ##arg);           \
-		if (g_dsi_log)                                              \
 			pr_info(pr_fmt(fmt), ##arg);     \
 	} while (0)
 
@@ -162,5 +155,4 @@ extern bool g_mobile_log;
 extern bool g_fence_log;
 extern bool g_irq_log;
 extern bool g_detail_log;
-extern bool g_dsi_log;
 #endif

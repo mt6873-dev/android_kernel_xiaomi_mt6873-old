@@ -149,13 +149,15 @@ struct mtk_base_afe_memif {
 	int using_sram;
 	int use_dram_only;
 	int use_adsp_share_mem;
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+
 	bool vow_bargein_enable;
-#endif
+
 #if defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
 	bool scp_spk_enable;
 #endif
-
+#if defined(CONFIG_MTK_ULTRASND_PROXIMITY)
+	bool scp_ultra_enable;
+#endif
 	int use_mmap_share_mem;  // 1 : dl   2 : ul
 
 	bool ack_enable;

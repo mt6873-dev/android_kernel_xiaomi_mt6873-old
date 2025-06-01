@@ -2,7 +2,6 @@
  * Framework for buffer objects that can be shared across devices/subsystems.
  *
  * Copyright(C) 2011 Linaro Limited. All rights reserved.
- * Copyright (C) 2021 XiaoMi, Inc.
  * Author: Sumit Semwal <sumit.semwal@ti.com>
  *
  * Many thanks to linaro-mm-sig list, and specially
@@ -85,28 +84,15 @@ static void dma_buf_release(struct dentry *dentry)
 
 	dmabuf->ops->release(dmabuf);
 
-	if (dmabuf->resv == (struct reservation_object *)&dmabuf[1])
-		reservation_object_fini(dmabuf->resv);
-
-	module_put(dmabuf->owner);
-	kfree(dmabuf->name);
-	kfree(dmabuf);
-}
-
-static int dma_buf_file_release(struct inode *inode, struct file *file)
-{
-	struct dma_buf *dmabuf;
-
-	if (!is_dma_buf_file(file))
-		return -EINVAL;
-
-	dmabuf = file->private_data;
-
 	mutex_lock(&db_list.lock);
 	list_del(&dmabuf->list_node);
 	mutex_unlock(&db_list.lock);
 
-	return 0;
+	if (dmabuf->resv == (struct reservation_object *)&dmabuf[1])
+		reservation_object_fini(dmabuf->resv);
+
+	module_put(dmabuf->owner);
+	kfree(dmabuf);
 }
 
 static const struct dentry_operations dma_buf_dentry_ops = {
@@ -402,8 +388,7 @@ static long dma_buf_ioctl(struct file *file,
 
 		return ret;
 
-	case DMA_BUF_SET_NAME_A:
-	case DMA_BUF_SET_NAME_B:
+	case DMA_BUF_SET_NAME:
 		return dma_buf_set_name(dmabuf, (const char __user *)arg);
 
 	default:
@@ -426,7 +411,6 @@ static void dma_buf_show_fdinfo(struct seq_file *m, struct file *file)
 }
 
 static const struct file_operations dma_buf_fops = {
-	.release	= dma_buf_file_release,
 	.mmap		= dma_buf_mmap_internal,
 	.llseek		= dma_buf_llseek,
 	.poll		= dma_buf_poll,

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2018 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -49,27 +48,27 @@
 			 *	MAX_POWER_LV = 0x21, MAX_POWER_LVIC = 0x31
 			 *	MAX_POWER_HV = 0x41, MAX_POWER_HVIC = 0x51
 			 */
-			pd,charging_policy= <0x21>;
+			pd,charging_policy= <0x31>;
 
 			pd,source-pdo-size = <1>;
-			/* pd,source-pdo-data = <0x00019032>; *//* 5V, 500 mA */
 			pd,source-pdo-data = <0x00019096>; /* 5V, 1500 mA */
-			pd,sink-pdo-size = <2>;
-			/* pd,sink-pdo-data = <0x000190c8 0x000190c8> ;*//* 5V2A */
-			pd,sink-pdo-data = <0x0001912c 0x000190c8>; /* 5V3A */
-			/* 0x0002d0c8 : 9V, 2A<0x04019032 0x04019064> */
+			pd,sink-pdo-size = <1>;
+			pd,sink-pdo-data = <0x000190c8>;
 
 			/*
 			 * No DP, host + device
-			 *	pd,id-vdo-size = <3>;
-			 *	pd,id-vdo-data = <0xd10029cf 0x0 0x63600000>;
+			 *	pd,id-vdo-size = <6>;
+			 *	pd,id-vdo-data = <0xd14029cf 0x0 0x63600000
+						  0x41800000 0x0 0x21800000>;
 			 * With DP
-			 *	pd,id-vdo-size = <3>;
-			 *	pd,id-vdo-data = <0xd60029cf 0x0 0x63600000>;
+			 *	pd,id-vdo-size = <6>;
+			 *	pd,id-vdo-data = <0xd54029cf 0x0 0x63600000
+						  0x41800000 0x0 0x21800000>;
 			 */
 
-			pd,id-vdo-size = <3>;
-			pd,id-vdo-data = <0xd60029cf 0x0 0x63600000>;
+			pd,id-vdo-size = <6>;
+			pd,id-vdo-data = <0xd54029cf 0x0 0x63600000
+					  0x41800000 0x0 0x21800000>;
 
 			bat,nr = <1>;
 			bat-info0 {
@@ -113,7 +112,7 @@
 			2nd_connection = "dfp_d";
 			signal,dp_v13;
 			//signal,dp_gen2;
-			usbr20_not_used;
+			//usbr20_not_used;
 			typec,receptacle;
 			ufp_d {
 				//pin_assignment,mode_a;
@@ -123,13 +122,12 @@
 				//pin_assignment,mode_e;
 			};
 			dfp_d {
-				/* Only support mode C & D */
 				//pin_assignment,mode_a;
 				//pin_assignment,mode_b;
 				pin_assignment,mode_c;
 				pin_assignment,mode_d;
 				pin_assignment,mode_e;
-				pin_assignment,mode_f;
+				//pin_assignment,mode_f;
 			};
 		};
 	};

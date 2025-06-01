@@ -44,20 +44,6 @@
 
 #define MAX_SETALT_TIMEOUT_MS 1000
 
-#define MTK_SND_USB_DBG(fmt, args...) \
-	pr_notice("<%s(), %d> " fmt, __func__, __LINE__, ## args)
-
-#define mtk_pr_info(FREQ, fmt, args...) do {\
-	static DEFINE_RATELIMIT_STATE(ratelimit, HZ, FREQ);\
-	static int skip_cnt;\
-	\
-	if (__ratelimit(&ratelimit)) {\
-		MTK_SND_USB_DBG(fmt ", skip_cnt<%d>\n", ## args, skip_cnt);\
-		skip_cnt = 0;\
-	} else\
-		skip_cnt++;\
-} while (0)\
-
 int increase_stop_threshold;
 module_param(increase_stop_threshold, int, 0644);
 /* return the estimated delay based on USB frame counters */
@@ -97,10 +83,12 @@ snd_pcm_uframes_t snd_usb_pcm_delay(struct snd_usb_substream *subs,
  */
 static snd_pcm_uframes_t snd_usb_pcm_pointer(struct snd_pcm_substream *substream)
 {
-	struct snd_usb_substream *subs;
+	struct snd_usb_substream *subs = substream->runtime->private_data;
 	unsigned int hwptr_done;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	snd_pcm_uframes_t avail;
 
-	subs = (struct snd_usb_substream *)substream->runtime->private_data;
+
 	if (atomic_read(&subs->stream->chip->shutdown))
 		return SNDRV_PCM_POS_XRUN;
 	spin_lock(&subs->lock);
@@ -108,25 +96,19 @@ static snd_pcm_uframes_t snd_usb_pcm_pointer(struct snd_pcm_substream *substream
 	substream->runtime->delay = snd_usb_pcm_delay(subs,
 						substream->runtime->rate);
 
-	/* show notification if stop_threshold has been disabled */
-	if (substream->runtime->stop_threshold >=
-			substream->runtime->buffer_size) {
-		snd_pcm_uframes_t avail;
-		struct snd_pcm_runtime *runtime = substream->runtime;
-
+	/* xrun debug */
+	if (runtime->status->state != SNDRV_PCM_STATE_DRAINING) {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 			avail = snd_pcm_playback_avail(runtime);
 		else
 			avail = snd_pcm_capture_avail(runtime);
 
-		if (avail >= runtime->buffer_size)
-			mtk_pr_info(3, "dir<%d>,avail<%ld>,thld<%ld>,sz<%ld>,bound<%ld>",
-			substream->stream,
-			avail,
-			runtime->stop_threshold,
-			runtime->buffer_size,
-			runtime->boundary
-			);
+		if (avail >= runtime->stop_threshold)
+			usb_audio_info_ratelimited(subs->stream->chip,
+				"dir<%d>,avail<%ld>,thld<%ld>,sz<%ld>",
+				substream->stream, avail,
+				runtime->stop_threshold,
+				runtime->buffer_size);
 	}
 
 	spin_unlock(&subs->lock);
@@ -367,7 +349,6 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	struct usb_host_interface *alts;
 	struct usb_interface *iface;
 	unsigned int ep;
-	unsigned int ifnum;
 
 	/* Implicit feedback sync EPs consumers are always playback EPs */
 	if (subs->direction != SNDRV_PCM_STREAM_PLAYBACK)
@@ -376,25 +357,45 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	switch (subs->stream->chip->usb_id) {
 	case USB_ID(0x0763, 0x2030): /* M-Audio Fast Track C400 */
 	case USB_ID(0x0763, 0x2031): /* M-Audio Fast Track C600 */
-	case USB_ID(0x22f0, 0x0006): /* Allen&Heath Qu-16 */
 		ep = 0x81;
-		ifnum = 3;
-		goto add_sync_ep_from_ifnum;
+		iface = usb_ifnum_to_if(dev, 3);
+
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
+		break;
 	case USB_ID(0x0763, 0x2080): /* M-Audio FastTrack Ultra */
 	case USB_ID(0x0763, 0x2081):
 		ep = 0x81;
-		ifnum = 2;
-		goto add_sync_ep_from_ifnum;
-	case USB_ID(0x2466, 0x8003): /* Fractal Audio Axe-Fx II */
-		ep = 0x86;
-		ifnum = 2;
-		goto add_sync_ep_from_ifnum;
-	case USB_ID(0x1397, 0x0002): /* Behringer UFX1204 */
-		ep = 0x81;
-		ifnum = 1;
-		goto add_sync_ep_from_ifnum;
-	}
+		iface = usb_ifnum_to_if(dev, 2);
 
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
+	case USB_ID(0x2466, 0x8003):
+		ep = 0x86;
+		iface = usb_ifnum_to_if(dev, 2);
+
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
+	case USB_ID(0x1397, 0x0002):
+		ep = 0x81;
+		iface = usb_ifnum_to_if(dev, 1);
+
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
+
+	}
 	if (attr == USB_ENDPOINT_SYNC_ASYNC &&
 	    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
 	    altsd->bInterfaceProtocol == 2 &&
@@ -408,14 +409,6 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 
 	/* No quirk */
 	return 0;
-
-add_sync_ep_from_ifnum:
-	iface = usb_ifnum_to_if(dev, ifnum);
-
-	if (!iface || iface->num_altsetting < 2)
-		return -EINVAL;
-
-	alts = &iface->altsetting[1];
 
 add_sync_ep:
 	subs->sync_endpoint = snd_usb_add_endpoint(subs->stream->chip,
@@ -816,12 +809,12 @@ static int snd_usb_hw_params(struct snd_pcm_substream *substream,
 	/* add the qos request and set the latency */
 	if (pm_qos_request_active(&subs->pm_qos)) {
 		pm_qos_update_request(&subs->pm_qos,
-					US_PER_FRAME);
+					US_PER_FRAME * PM_QOS_COUNT);
 		pr_info("%s: (pm_qos @%p) update\n",
 			   __func__, &subs->pm_qos);
 	} else {
 		pm_qos_add_request(&subs->pm_qos,
-			   PM_QOS_CPU_DMA_LATENCY, US_PER_FRAME);
+			   PM_QOS_CPU_DMA_LATENCY, US_PER_FRAME * PM_QOS_COUNT);
 		pr_info("%s: (pm_qos @%p) request\n",
 			   __func__, &subs->pm_qos);
 	}
@@ -1384,12 +1377,6 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 			// continue;
 		}
 		bytes = urb->iso_frame_desc[i].actual_length;
-		if (subs->stream_offset_adj > 0) {
-			unsigned int adj = min(subs->stream_offset_adj, bytes);
-			cp += adj;
-			bytes -= adj;
-			subs->stream_offset_adj -= adj;
-		}
 		frames = bytes / stride;
 		if (!subs->txfr_quirk)
 			bytes = frames * stride;

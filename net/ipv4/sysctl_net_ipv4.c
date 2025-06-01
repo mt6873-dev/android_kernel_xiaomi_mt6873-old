@@ -206,8 +206,6 @@ static int ipv4_ping_group_range(struct ctl_table *table, int write,
 static int proc_tcp_congestion_control(struct ctl_table *ctl, int write,
 				       void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	struct net *net = container_of(ctl->data, struct net,
-				       ipv4.tcp_congestion_control);
 	char val[TCP_CA_NAME_MAX];
 	struct ctl_table tbl = {
 		.data = val,
@@ -215,11 +213,11 @@ static int proc_tcp_congestion_control(struct ctl_table *ctl, int write,
 	};
 	int ret;
 
-	tcp_get_default_congestion_control(net, val);
+	tcp_get_default_congestion_control(val);
 
 	ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
 	if (write && ret == 0)
-		ret = tcp_set_default_congestion_control(net, val);
+		ret = tcp_set_default_congestion_control(val);
 	return ret;
 }
 
@@ -260,12 +258,10 @@ static int proc_allowed_congestion_control(struct ctl_table *ctl,
 	return ret;
 }
 
-static int proc_tcp_fastopen_key(struct ctl_table *table, int write,
+static int proc_tcp_fastopen_key(struct ctl_table *ctl, int write,
 				 void __user *buffer, size_t *lenp,
 				 loff_t *ppos)
 {
-	struct net *net = container_of(table->data, struct net,
-	    ipv4.sysctl_tcp_fastopen);
 	struct ctl_table tbl = { .maxlen = (TCP_FASTOPEN_KEY_LENGTH * 2 + 10) };
 	struct tcp_fastopen_context *ctxt;
 	u32  user_key[4]; /* 16 bytes, matching TCP_FASTOPEN_KEY_LENGTH */
@@ -277,7 +273,7 @@ static int proc_tcp_fastopen_key(struct ctl_table *table, int write,
 		return -ENOMEM;
 
 	rcu_read_lock();
-	ctxt = rcu_dereference(net->ipv4.tcp_fastopen_ctx);
+	ctxt = rcu_dereference(tcp_fastopen_ctx);
 	if (ctxt)
 		memcpy(key, ctxt->key, TCP_FASTOPEN_KEY_LENGTH);
 	else
@@ -297,11 +293,16 @@ static int proc_tcp_fastopen_key(struct ctl_table *table, int write,
 			ret = -EINVAL;
 			goto bad_key;
 		}
+		/* Generate a dummy secret but don't publish it. This
+		 * is needed so we don't regenerate a new key on the
+		 * first invocation of tcp_fastopen_cookie_gen
+		 */
+		tcp_fastopen_init_key_once(false);
 
 		for (i = 0; i < ARRAY_SIZE(user_key); i++)
 			key[i] = cpu_to_le32(user_key[i]);
 
-		tcp_fastopen_reset_cipher(net, key, TCP_FASTOPEN_KEY_LENGTH);
+		tcp_fastopen_reset_cipher(key, TCP_FASTOPEN_KEY_LENGTH);
 	}
 
 bad_key:
@@ -312,18 +313,71 @@ bad_key:
 	return ret;
 }
 
+static void proc_configure_early_demux(int enabled, int protocol)
+{
+	struct net_protocol *ipprot;
+#if IS_ENABLED(CONFIG_IPV6)
+	struct inet6_protocol *ip6prot;
+#endif
+
+	rcu_read_lock();
+
+	ipprot = rcu_dereference(inet_protos[protocol]);
+	if (ipprot)
+		ipprot->early_demux = enabled ? ipprot->early_demux_handler :
+						NULL;
+
+#if IS_ENABLED(CONFIG_IPV6)
+	ip6prot = rcu_dereference(inet6_protos[protocol]);
+	if (ip6prot)
+		ip6prot->early_demux = enabled ? ip6prot->early_demux_handler :
+						 NULL;
+#endif
+	rcu_read_unlock();
+}
+
+static int proc_tcp_early_demux(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+
+	if (write && !ret) {
+		int enabled = init_net.ipv4.sysctl_tcp_early_demux;
+
+		proc_configure_early_demux(enabled, IPPROTO_TCP);
+	}
+
+	return ret;
+}
+
+static int proc_udp_early_demux(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+
+	if (write && !ret) {
+		int enabled = init_net.ipv4.sysctl_udp_early_demux;
+
+		proc_configure_early_demux(enabled, IPPROTO_UDP);
+	}
+
+	return ret;
+}
+
 static int proc_tfo_blackhole_detect_timeout(struct ctl_table *table,
 					     int write,
 					     void __user *buffer,
 					     size_t *lenp, loff_t *ppos)
 {
-	struct net *net = container_of(table->data, struct net,
-	    ipv4.sysctl_tcp_fastopen_blackhole_timeout);
 	int ret;
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (write && ret == 0)
-		atomic_set(&net->ipv4.tfo_active_disable_times, 0);
+		tcp_fastopen_active_timeout_reset();
 
 	return ret;
 }
@@ -360,6 +414,27 @@ static struct ctl_table ipv4_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
+	},
+	{
+		.procname	= "tcp_fastopen",
+		.data		= &sysctl_tcp_fastopen,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "tcp_fastopen_key",
+		.mode		= 0600,
+		.maxlen		= ((TCP_FASTOPEN_KEY_LENGTH * 2) + 10),
+		.proc_handler	= proc_tcp_fastopen_key,
+	},
+	{
+		.procname	= "tcp_fastopen_blackhole_timeout_sec",
+		.data		= &sysctl_tcp_fastopen_blackhole_timeout,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_tfo_blackhole_detect_timeout,
+		.extra1		= &zero,
 	},
 	{
 		.procname	= "tcp_abort_on_overflow",
@@ -513,6 +588,12 @@ static struct ctl_table ipv4_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "tcp_congestion_control",
+		.mode		= 0644,
+		.maxlen		= TCP_CA_NAME_MAX,
+		.proc_handler	= proc_tcp_congestion_control,
 	},
 	{
 		.procname	= "tcp_workaround_signed_windows",
@@ -774,14 +855,14 @@ static struct ctl_table ipv4_net_table[] = {
 		.data           = &init_net.ipv4.sysctl_udp_early_demux,
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
-		.proc_handler   = proc_douintvec,
+		.proc_handler   = proc_udp_early_demux
 	},
 	{
 		.procname       = "tcp_early_demux",
 		.data           = &init_net.ipv4.sysctl_tcp_early_demux,
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
-		.proc_handler   = proc_douintvec,
+		.proc_handler   = proc_tcp_early_demux
 	},
 	{
 		.procname	= "ip_default_ttl",
@@ -921,13 +1002,6 @@ static struct ctl_table ipv4_net_table[] = {
 	},
 #endif
 	{
-		.procname	= "tcp_congestion_control",
-		.data		= &init_net.ipv4.tcp_congestion_control,
-		.mode		= 0644,
-		.maxlen		= TCP_CA_NAME_MAX,
-		.proc_handler	= proc_tcp_congestion_control,
-	},
-	{
 		.procname	= "tcp_keepalive_time",
 		.data		= &init_net.ipv4.sysctl_tcp_keepalive_time,
 		.maxlen		= sizeof(int),
@@ -1036,28 +1110,6 @@ static struct ctl_table ipv4_net_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
-	},
-	{
-		.procname	= "tcp_fastopen",
-		.data		= &init_net.ipv4.sysctl_tcp_fastopen,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "tcp_fastopen_key",
-		.mode		= 0600,
-		.data		= &init_net.ipv4.sysctl_tcp_fastopen,
-		.maxlen		= ((TCP_FASTOPEN_KEY_LENGTH * 2) + 10),
-		.proc_handler	= proc_tcp_fastopen_key,
-	},
-	{
-		.procname	= "tcp_fastopen_blackhole_timeout_sec",
-		.data		= &init_net.ipv4.sysctl_tcp_fastopen_blackhole_timeout,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_tfo_blackhole_detect_timeout,
-		.extra1		= &zero,
 	},
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
 	{
