@@ -3036,7 +3036,7 @@ static kal_uint32 set_max_framerate_by_scenario(
 				+ imgsensor.dummy_line;
 			imgsensor.min_frame_length = imgsensor.frame_length;
 			spin_unlock(&imgsensor_drv_lock);
-		}
+	}
 
 		if (imgsensor.frame_length > imgsensor.shutter)
 			set_dummy();

@@ -1,5 +1,6 @@
 #
 # Copyright (C) 2015 MediaTek Inc.
+# Copyright (C) 2020 XiaoMi, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -13,6 +14,11 @@
 #
 # Makefile for misc devices that really don't fit anywhere else.
 #
+
+ifneq ($(findstring "k6889v1_64", $(CONFIG_ARCH_MTK_PROJECT)),)
+subdir-ccflags-y += -D_XIAOMI_CEZANNE_
+endif
+
 MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 ARCH_MTK_PROJECT := $(subst ",,$(CONFIG_ARCH_MTK_PROJECT))
 IMGSENSOR_DRIVER_PATH  := $(srctree)/drivers/misc/mediatek/imgsensor/src
@@ -22,15 +28,14 @@ subdir-ccflags-y += -I$(IMGSENSOR_DRIVER_PATH)/common/$(COMMON_VERSION) \
 	-I$(IMGSENSOR_DRIVER_PATH)/$(MTK_PLATFORM)/seninf/ \
 	-I$(MTK_DRIVER_PATH)/mmdvfs \
 	-I$(srctree)/drivers/i2c/busses/
-obj-y += ../common/$(COMMON_VERSION)/imgsensor.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_hw.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_i2c.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_legacy.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_proc.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_sensor_list.o
-obj-y += ../common/$(COMMON_VERSION)/seninf_clk.o
-obj-y += ../common/$(COMMON_VERSION)/seninf.o
-obj-y += ../common/$(COMMON_VERSION)/imgsensor_pwr_seq.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_hw.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_i2c.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_legacy.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_proc.o
+obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_sensor_list.o
+obj-y				+= ../common/$(COMMON_VERSION)/seninf.o
 define FILTER_DRV
 ifeq ($(wildcard $(IMGSENSOR_DRIVER_PATH)/$(MTK_PLATFORM)/camera_project/$(ARCH_MTK_PROJECT)/$(1)),)
 ifeq ($(wildcard $(IMGSENSOR_DRIVER_PATH)/$(MTK_PLATFORM)/$(1)),)
@@ -63,11 +68,13 @@ endif
 else
 obj-y				+= camera_project/$(ARCH_MTK_PROJECT)/
 subdir-ccflags-y		+= -I$(IMGSENSOR_DRIVER_PATH)/$(MTK_PLATFORM)/camera_project/$(ARCH_MTK_PROJECT)/camera_hw
-subdir-ccflags-y		+= -I$(IMGSENSOR_DRIVER_PATH)/$(MTK_PLATFORM)/camera_hw
 endif
-subdir-ccflags-y		+= -I$(IMGSENSOR_DRIVER_PATH)/common/$(COMMON_VERSION)/camera_hw
 
 # Enable parallelism
 subdir-ccflags-y += -DSENSOR_PARALLEISM
 
 obj-y += seninf/
+
+ifeq ($(ARCH_MTK_PROJECT), k6889v1_64)
+subdir-ccflags-y += -DNEED_LATE_INITCALL
+endif

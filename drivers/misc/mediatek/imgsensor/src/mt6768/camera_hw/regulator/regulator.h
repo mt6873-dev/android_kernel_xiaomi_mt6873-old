@@ -23,7 +23,6 @@
 #include "imgsensor.h"
 
 
-extern struct mutex oc_mutex;
 extern struct device *gimgsensor_device;
 extern struct IMGSENSOR gimgsensor;
 

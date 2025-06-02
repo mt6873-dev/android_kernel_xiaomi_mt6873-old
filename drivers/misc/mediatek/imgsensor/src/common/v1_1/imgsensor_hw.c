@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,82 +21,22 @@
 #include "imgsensor_sensor.h"
 #include "imgsensor_hw.h"
 
-/*the index is consistent with enum IMGSENSOR_HW_PIN*/
-char * const imgsensor_hw_pin_names[] = {
-	"none",
-	"pdn",
-	"rst",
-	"vcama",
-#ifdef CONFIG_REGULATOR_RT5133
-	"vcama1",
+#ifdef _XIAOMI_BEGONIA_
+#include "linux/regulator/consumer.h"
+#include <mt-plat/upmu_common.h> 
 #endif
-	"vcamd",
-	"vcamio",
-#ifdef MIPI_SWITCH
-	"mipi_switch_en",
-	"mipi_switch_sel",
-#endif
-	"mclk"
-};
-
-/*the index is consistent with enum IMGSENSOR_HW_ID*/
-char * const imgsensor_hw_id_names[] = {
-	"mclk",
-	"regulator",
-	"gpio"
-};
 
 enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 {
 	struct IMGSENSOR_HW_SENSOR_POWER      *psensor_pwr;
 	struct IMGSENSOR_HW_CFG               *pcust_pwr_cfg;
 	struct IMGSENSOR_HW_CUSTOM_POWER_INFO *ppwr_info;
-	unsigned int i, j, len;
+	int i, j;
 	char str_prop_name[LENGTH_FOR_SNPRINTF];
-	const char *pin_hw_id_name;
 	struct device_node *of_node
 		= of_find_compatible_node(NULL, NULL, "mediatek,imgsensor");
 
 	mutex_init(&phw->common.pinctrl_mutex);
-
-	/* update the imgsensor_custom_cfg by dts */
-	for (i = 0; i < IMGSENSOR_SENSOR_IDX_MAX_NUM; i++) {
-		PK_DBG("IMGSENSOR_SENSOR_IDX: %d\n", i);
-		pcust_pwr_cfg = imgsensor_custom_config;
-		while (pcust_pwr_cfg->sensor_idx != i &&
-		       pcust_pwr_cfg->sensor_idx != IMGSENSOR_SENSOR_IDX_NONE)
-			pcust_pwr_cfg++;
-
-		if (pcust_pwr_cfg->sensor_idx == IMGSENSOR_SENSOR_IDX_NONE)
-			continue;
-
-		ppwr_info = pcust_pwr_cfg->pwr_info;
-		while (ppwr_info->pin != IMGSENSOR_HW_PIN_NONE) {
-			memset(str_prop_name, 0, sizeof(str_prop_name));
-			snprintf(str_prop_name,
-				sizeof(str_prop_name),
-				"cam%d_pin_%s",
-				i,
-				imgsensor_hw_pin_names[ppwr_info->pin]);
-			if (of_property_read_string(
-				of_node, str_prop_name,
-				&pin_hw_id_name) == 0) {
-				for (j = 0; j < IMGSENSOR_HW_ID_MAX_NUM; j++) {
-					len = strlen(imgsensor_hw_id_names[j]);
-					if (strncmp(pin_hw_id_name, imgsensor_hw_id_names[j], len)
-						== 0) {
-						PK_DBG(
-							"imgsensor_hw_cfg hw_pin:%s, id name:%s, id:%d\n",
-							str_prop_name, pin_hw_id_name, j);
-						ppwr_info->id = j;
-						break;
-					}
-				}
-			}
-			ppwr_info++;
-		}
-	}
-	/* update the imgsensor_custom_cfg by dts END */
 
 	for (i = 0; i < IMGSENSOR_HW_ID_MAX_NUM; i++) {
 		if (hw_open[i] != NULL)
@@ -173,6 +114,11 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 	struct IMGSENSOR_HW_DEVICE       *pdev;
 	int                               pin_cnt = 0;
 
+#ifdef _XIAOMI_BEGONIA_
+	int                               ret = 0;
+	static struct regulator *ldo2_reg;	
+#endif
+
 	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 30);
 
 #ifdef CONFIG_FPGA_EARLY_PORTING  /*for FPGA*/
@@ -200,7 +146,6 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 	ppwr_info = ppwr_seq->pwr_info;
 
 	while (ppwr_info->pin != IMGSENSOR_HW_PIN_NONE &&
-	       ppwr_info->pin < IMGSENSOR_HW_PIN_MAX_NUM &&
 	       ppwr_info < ppwr_seq->pwr_info + IMGSENSOR_HW_POWER_INFO_MAX) {
 
 		if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON) {
@@ -210,17 +155,26 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 
 				if (__ratelimit(&ratelimit))
 					PK_DBG(
-					"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d, delay %u",
+					"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d",
 					sensor_idx,
 					ppwr_info->pin,
-					ppwr_info->pin_state_on,
-					ppwr_info->pin_on_delay);
+					ppwr_info->pin_state_on);
 
 				if (pdev->set != NULL)
 					pdev->set(pdev->pinstance,
 					sensor_idx,
 				    ppwr_info->pin, ppwr_info->pin_state_on);
 			}
+
+#ifdef _XIAOMI_BEGONIA_
+			if (ppwr_info->pin == IMGSENSOR_HW_PIN_AFVDD) {
+				ldo2_reg = regulator_get(NULL, "vtp");
+				ret = regulator_enable(ldo2_reg);
+				if (ret == 0) {
+					PK_DBG("[xiaomi] regulator_enable ldo2_reg success");
+				}
+			}
+#endif
 
 			mdelay(ppwr_info->pin_on_delay);
 		}
@@ -236,11 +190,10 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 
 			if (__ratelimit(&ratelimit))
 				PK_DBG(
-				"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_off %d, delay %u",
+				"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_off %d",
 				sensor_idx,
 				ppwr_info->pin,
-				ppwr_info->pin_state_off,
-				ppwr_info->pin_on_delay);
+				ppwr_info->pin_state_off);
 
 			if (ppwr_info->pin != IMGSENSOR_HW_PIN_UNDEF) {
 				pdev =
@@ -251,7 +204,12 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 					sensor_idx,
 				ppwr_info->pin, ppwr_info->pin_state_off);
 			}
-
+#ifdef _XIAOMI_BEGONIA_
+			if (ppwr_info->pin == IMGSENSOR_HW_PIN_AFVDD) {
+				ldo2_reg = regulator_get(NULL, "vtp");
+				regulator_disable(ldo2_reg);
+			}
+#endif
 			mdelay(ppwr_info->pin_on_delay);
 		}
 	}
@@ -280,6 +238,18 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 	if (phw->enable_sensor_by_index[(uint32_t)sensor_idx] &&
 	!strstr(phw->enable_sensor_by_index[(uint32_t)sensor_idx], curr_sensor_name))
 		return IMGSENSOR_RETURN_ERROR;
+
+#ifdef _XIAOMI_BEGONIA_
+	// --start
+	if (NULL != strstr("ov8856", curr_sensor_name)) {
+		if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON)
+			pmic_config_interface(PMIC_RG_BUCK_VS2_VOTER_EN_SET_ADDR, 0x1,
+				PMIC_RG_BUCK_VS2_VOTER_EN_SET_MASK, PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT);
+		else
+			pmic_config_interface(PMIC_RG_BUCK_VS2_VOTER_EN_CLR_ADDR, 0x1,
+				PMIC_RG_BUCK_VS2_VOTER_EN_CLR_MASK, PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT);
+	}
+#endif
 
 	ret = snprintf(str_index, sizeof(str_index), "%d", sensor_idx);
 	if (ret < 0) {
