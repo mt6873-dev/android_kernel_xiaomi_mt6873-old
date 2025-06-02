@@ -151,6 +151,16 @@ size_t strlcpy(char *dest, const char *src, size_t size)
 EXPORT_SYMBOL(strlcpy);
 #endif
 
+#ifndef __HAVE_ARCH_STPCPY
+char *stpcpy(char *__restrict__ dest, const char *__restrict__ src)
+{
+	while ((*dest++ = *src++) != '\0')
+		/* nothing */;
+	return dest - 1;
+}
+EXPORT_SYMBOL(stpcpy);
+#endif
+
 #ifndef __HAVE_ARCH_STRSCPY
 /**
  * strscpy - Copy a C-string into a sized buffer
