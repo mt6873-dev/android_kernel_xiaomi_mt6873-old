@@ -34,7 +34,7 @@ on:
        SOURCE_BOOT_IMAGE:
          description: 'Your original boot image url'
          required: false
-         default: 'https://raw.githubusercontent.com/xiaomi-mt6885-devs/android_kernel_xiaomi_mt6885/lineage-20.0/.github/boot.img'
+         default: 'https://raw.githubusercontent.com/mt6873-dev/android_kernel_xiaomi_mt6873/cgroup-v2/.github/boot-bomb-a15.img'
 
 jobs:
   build:
@@ -126,6 +126,14 @@ jobs:
            exit 1
        fi
   
+    - name: Upload Full output dir
+      uses: actions/upload-artifact@v4
+      with:
+        name: Output-${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+        if-no-files-found: warn
+        include-hidden-files: true
+        path: out/arch/arm64/boot/
+    
     - name: Make Anykernel3
       if: env.CHECK_FILE_IS_OK == 'true'
       run: |
